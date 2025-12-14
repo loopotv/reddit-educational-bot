@@ -1,8 +1,12 @@
 # Environment variables (NEVER commit these!)
+.env*
+*.env
 .env
 .env.local
 .env.production
 .env.development
+.env.template
+.env.example
 
 # API Keys and Secrets
 *.key
