@@ -99,7 +99,7 @@ The goal is to make advanced AI image generation techniques accessible to beginn
 ## Contact
 
 **Developer:** Alessandro Brunello
-**Platform:** VIVID.ai
+**Platform:** https://vividai.tv
 **GitHub:** https://github.com/loopotv
 
 ## License
