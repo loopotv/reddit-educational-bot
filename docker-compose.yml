@@ -1,0 +1,25 @@
+# Tutorial Bot - Integrated with existing n8n/postgres setup
+# This docker-compose adds only Redis for caching
+# Uses existing n8n, postgres, and ffmpeg containers on VPS
+
+version: '3.8'
+
+services:
+  # Redis for API response caching
+  redis:
+    image: redis:7-alpine
+    container_name: tutorial_redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - price_tracker_net
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+
+networks:
+  # Connect to existing network
+  price_tracker_net:
+    external: true
+
+volumes:
+  redis_data:

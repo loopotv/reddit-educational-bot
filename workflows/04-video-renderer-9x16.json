@@ -1,0 +1,549 @@
+{
+  "name": "04 - Video Renderer 9:16 (Wavespeed + FFmpeg)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 3
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 3 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT cq.*, bv.logo_url, bv.color_scheme, bv.font_primary, bv.font_secondary\nFROM content_queue cq\nJOIN branding_variants bv ON cq.branding_id = bv.id\nWHERE cq.status = 'ready_for_render'\nAND cq.script_approved = TRUE\nORDER BY cq.created_at ASC\nLIMIT 1;",
+        "options": {}
+      },
+      "id": "get-next-video",
+      "name": "Get Next Video to Render",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [450, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-n8n",
+          "name": "PostgreSQL - n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.id }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "has-video-to-render",
+      "name": "Has Video to Render?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE content_queue\nSET status = 'rendering'\nWHERE id = {{ $json.id }};",
+        "options": {}
+      },
+      "id": "mark-rendering",
+      "name": "Mark as Rendering",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [850, 200],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-n8n",
+          "name": "PostgreSQL - n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "content_id",
+              "name": "content_id",
+              "value": "={{ $('Get Next Video to Render').item.json.id }}",
+              "type": "number"
+            },
+            {
+              "id": "scenes",
+              "name": "scenes",
+              "value": "={{ JSON.parse($('Get Next Video to Render').item.json.scenes_json) }}",
+              "type": "object"
+            },
+            {
+              "id": "script_full",
+              "name": "script_full",
+              "value": "={{ $('Get Next Video to Render').item.json.script_full }}",
+              "type": "string"
+            },
+            {
+              "id": "branding",
+              "name": "branding",
+              "value": "={{ {\n  logo_url: $('Get Next Video to Render').item.json.logo_url,\n  color_scheme: $('Get Next Video to Render').item.json.color_scheme,\n  font_primary: $('Get Next Video to Render').item.json.font_primary,\n  font_secondary: $('Get Next Video to Render').item.json.font_secondary\n} }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-render-data",
+      "name": "Prepare Render Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [1050, 200]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "https://api.wavespeed.ai/v1/audio/tts",
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ {\n  \"text\": $json.script_full,\n  \"voice\": \"female-1\",\n  \"model\": \"minimax-speech-02-hd\",\n  \"speed\": 1.0,\n  \"format\": \"mp3\"\n} }}",
+        "options": {}
+      },
+      "id": "generate-voiceover",
+      "name": "Generate Voiceover (Wavespeed)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1250, 150],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wavespeed-api",
+          "name": "Wavespeed API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "audio_url",
+              "name": "audio_url",
+              "value": "={{ $json.data.audio_url }}",
+              "type": "string"
+            },
+            {
+              "id": "audio_duration",
+              "name": "audio_duration",
+              "value": "={{ $json.data.duration }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-audio-url",
+      "name": "Extract Audio URL",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [1450, 150]
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "url": "={{ $json.audio_url }}",
+        "options": {
+          "fileName": "={{ 'voiceover_' + $('Prepare Render Data').item.json.content_id + '.mp3' }}"
+        }
+      },
+      "id": "download-audio",
+      "name": "Download Audio File",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1650, 150]
+    },
+    {
+      "parameters": {
+        "fieldName": "scenes",
+        "batchSize": 1
+      },
+      "id": "split-scenes",
+      "name": "Split Into Scenes",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1250, 250]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "https://api.wavespeed.ai/v1/images/generate",
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ {\n  \"prompt\": $json.image_prompt,\n  \"model\": \"flux-dev\",\n  \"width\": 1080,\n  \"height\": 1920,\n  \"num_outputs\": 1,\n  \"guidance_scale\": 3.5,\n  \"num_inference_steps\": 28\n} }}",
+        "options": {}
+      },
+      "id": "generate-image",
+      "name": "Generate Image (Flux Dev)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1450, 250],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wavespeed-api",
+          "name": "Wavespeed API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "url": "={{ $json.data.images[0] }}",
+        "options": {
+          "fileName": "={{ 'scene_' + $itemIndex + '.png' }}"
+        }
+      },
+      "id": "download-image",
+      "name": "Download Scene Image",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1650, 250]
+    },
+    {
+      "parameters": {},
+      "id": "merge-assets",
+      "name": "Merge All Assets",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [1850, 200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT track_name, local_path\nFROM music_library\nWHERE mood = '{{ $('Get Next Video to Render').item.json.music_mood || 'energetic' }}'\nORDER BY RANDOM()\nLIMIT 1;",
+        "options": {}
+      },
+      "id": "select-music",
+      "name": "Select Random Music",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1050, 350],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-n8n",
+          "name": "PostgreSQL - n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "=cd /tmp && \\\nffmpeg -y \\\n  {{ $('Prepare Render Data').item.json.scenes.map((s, i) => `-loop 1 -t ${s.duration} -i scene_${i}.png`).join(' ') }} \\\n  -i voiceover_{{ $('Prepare Render Data').item.json.content_id }}.mp3 \\\n  -i {{ $('Select Random Music').item.json.local_path }} \\\n  -filter_complex \"\\\n    {{ $('Prepare Render Data').item.json.scenes.map((s, i) => {\n      const motion = s.motion || 'none';\n      const zoom = motion === 'medium' ? 'zoompan=z=\\'min(zoom+0.0015,1.15)\\':d=25*${s.duration}:s=1080x1920' :\n                   motion === 'subtle' ? 'zoompan=z=\\'min(zoom+0.0008,1.08)\\':d=25*${s.duration}:s=1080x1920' :\n                   'scale=1080:1920';\n      return `[${i}:v]${zoom}[v${i}]`;\n    }).join(';') }};\\\n    {{ $('Prepare Render Data').item.json.scenes.map((s, i) => `[v${i}]`).join('') }}concat=n={{ $('Prepare Render Data').item.json.scenes.length }}:v=1:a=0[vout];\\\n    [{{ $('Prepare Render Data').item.json.scenes.length }}:a]volume=1.0[voice];\\\n    [{{ $('Prepare Render Data').item.json.scenes.length + 1 }}:a]volume=0.15[music];\\\n    [voice][music]amix=inputs=2:duration=shortest[aout]\\\n  \" \\\n  -map \"[vout]\" -map \"[aout]\" \\\n  -c:v libx264 -preset medium -crf 23 \\\n  -c:a aac -b:a 192k \\\n  -pix_fmt yuv420p \\\n  -movflags +faststart \\\n  video_{{ $('Prepare Render Data').item.json.content_id }}.mp4 && \\\nls -lh video_{{ $('Prepare Render Data').item.json.content_id }}.mp4",
+        "description": "Render 9:16 video with FFmpeg"
+      },
+      "id": "ssh-ffmpeg-render",
+      "name": "SSH - FFmpeg Render",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [2050, 200],
+      "credentials": {
+        "sshPassword": {
+          "id": "vps-ssh",
+          "name": "Contabo VPS SSH"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "=scp contabo:/tmp/video_{{ $('Prepare Render Data').item.json.content_id }}.mp4 /var/www/videos/ && \\\nssh contabo \"rm /tmp/video_{{ $('Prepare Render Data').item.json.content_id }}.mp4 /tmp/scene_*.png /tmp/voiceover_*.mp3\"",
+        "description": "Transfer video to web directory"
+      },
+      "id": "transfer-video",
+      "name": "Transfer Video to Storage",
+      "type": "n8n-nodes-base.bash",
+      "typeVersion": 1,
+      "position": [2250, 200]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "video_url",
+              "name": "video_url",
+              "value": "=http://213.199.55.206/videos/video_{{ $('Prepare Render Data').item.json.content_id }}.mp4",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "build-video-url",
+      "name": "Build Video URL",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [2450, 200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE content_queue\nSET video_url = '{{ $json.video_url }}',\n    music_track = '{{ $('Select Music').item.json.track_name }}',\n    status = 'video_pending_approval',\n    rendered_at = NOW()\nWHERE id = {{ $('Prepare Render Data').item.json.content_id }}\nRETURNING *;",
+        "options": {}
+      },
+      "id": "update-database",
+      "name": "Update Database with Video",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [2650, 200],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-n8n",
+          "name": "PostgreSQL - n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendVideo",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "chat_id",
+              "value": "={{ $env.TELEGRAM_CHAT_ID }}"
+            },
+            {
+              "name": "video",
+              "value": "={{ $('Build Video URL').item.json.video_url }}"
+            },
+            {
+              "name": "caption",
+              "value": "=🎬 VIDEO READY FOR REVIEW\\n\\n📝 Script: {{ $('Get Next Video to Render').item.json.script_hook }}\\n🎵 Music: {{ $('Select Music').item.json.track_name }}\\n\\nContent ID: {{ $('Prepare Render Data').item.json.content_id }}"
+            },
+            {
+              "name": "reply_markup",
+              "value": "={{ JSON.stringify({\n  inline_keyboard: [[\n    { text: '✅ Approve & Publish', callback_data: 'approve_video_' + $('Prepare Render Data').item.json.content_id },\n    { text: '❌ Reject', callback_data: 'reject_video_' + $('Prepare Render Data').item.json.content_id }\n  ]]\n}) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "send-video-approval",
+      "name": "Send Video for Approval",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2850, 200]
+    }
+  ],
+  "connections": {
+    "Every 3 Hours": {
+      "main": [
+        [
+          {
+            "node": "Get Next Video to Render",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Next Video to Render": {
+      "main": [
+        [
+          {
+            "node": "Has Video to Render?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Video to Render?": {
+      "main": [
+        [
+          {
+            "node": "Mark as Rendering",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark as Rendering": {
+      "main": [
+        [
+          {
+            "node": "Prepare Render Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Render Data": {
+      "main": [
+        [
+          {
+            "node": "Generate Voiceover (Wavespeed)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Split Into Scenes",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Select Random Music",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Voiceover (Wavespeed)": {
+      "main": [
+        [
+          {
+            "node": "Extract Audio URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Audio URL": {
+      "main": [
+        [
+          {
+            "node": "Download Audio File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Audio File": {
+      "main": [
+        [
+          {
+            "node": "Merge All Assets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Into Scenes": {
+      "main": [
+        [
+          {
+            "node": "Generate Image (Flux Dev)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Image (Flux Dev)": {
+      "main": [
+        [
+          {
+            "node": "Download Scene Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Scene Image": {
+      "main": [
+        [
+          {
+            "node": "Split Into Scenes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge All Assets": {
+      "main": [
+        [
+          {
+            "node": "SSH - FFmpeg Render",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SSH - FFmpeg Render": {
+      "main": [
+        [
+          {
+            "node": "Transfer Video to Storage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transfer Video to Storage": {
+      "main": [
+        [
+          {
+            "node": "Build Video URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Video URL": {
+      "main": [
+        [
+          {
+            "node": "Update Database with Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Database with Video": {
+      "main": [
+        [
+          {
+            "node": "Send Video for Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2024-01-15T12:00:00.000Z",
+  "versionId": "1"
+}

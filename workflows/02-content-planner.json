@@ -1,0 +1,370 @@
+{
+  "name": "02 - Content Planner Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 6 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, technique_name, example_prompt, source_post_title, subreddit\nFROM trending_techniques\nWHERE content_created = FALSE\nORDER BY trending_score DESC\nLIMIT 3;",
+        "options": {}
+      },
+      "id": "get-pending-techniques",
+      "name": "Get Pending Techniques",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [450, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-n8n",
+          "name": "PostgreSQL - n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "technique_id",
+              "name": "technique_id",
+              "value": "={{ $json.id }}",
+              "type": "number"
+            },
+            {
+              "id": "technique_name",
+              "name": "technique_name",
+              "value": "={{ $json.technique_name }}",
+              "type": "string"
+            },
+            {
+              "id": "example_prompt",
+              "name": "example_prompt",
+              "value": "={{ $json.example_prompt }}",
+              "type": "string"
+            },
+            {
+              "id": "context",
+              "name": "context",
+              "value": "={{ $json.source_post_title }} (r/{{ $json.subreddit }})",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-data",
+      "name": "Prepare Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "system_prompt",
+              "name": "system_prompt",
+              "value": "You are an expert advertutorial scriptwriter for VIVID.ai - an AI image generation platform.\n\nYour task: Create a 30-45 second TikTok/Instagram script that:\n1. HOOKS viewers in first 3 seconds with the trending technique name\n2. Shows BEFORE prompt (basic/generic)\n3. Shows AFTER prompt (using the technique)\n4. Explains WHY the technique works\n5. Ends with soft CTA to VIVID.ai\n\nIMPORTANT RULES:\n- Script MUST be 120-180 words (voiceover timing)\n- Use conversational TikTok tone (second person \"you\")\n- Include exact prompts viewers can copy\n- Focus on educational value first, advertising second\n- Generate 5-6 scene descriptions for image generation\n\nOUTPUT FORMAT (strict JSON only):\n{\n  \"hook\": \"First 3 seconds text\",\n  \"script\": \"Full 30-45 second voiceover script\",\n  \"before_prompt\": \"Basic prompt without technique\",\n  \"after_prompt\": \"Enhanced prompt with technique\",\n  \"scenes\": [\n    {\n      \"duration\": 3.5,\n      \"image_prompt\": \"Detailed Flux Pro prompt\",\n      \"voiceover_text\": \"What narrator says during this scene\",\n      \"motion\": \"none|subtle|medium\"\n    }\n  ],\n  \"cta\": \"Final call-to-action line\",\n  \"hashtags\": [\"aiart\", \"midjourney\", \"technique_name\"]\n}",
+              "type": "string"
+            },
+            {
+              "id": "user_prompt",
+              "name": "user_prompt",
+              "value": "Create an advertutorial script about this trending AI prompting technique:\n\nTECHNIQUE: {{ $json.technique_name }}\nEXAMPLE: {{ $json.example_prompt }}\nCONTEXT: {{ $json.context }}\n\nTarget: TikTok/Instagram Reels (9:16 vertical)\nDuration: 30-45 seconds\nGoal: Educate + showcase VIVID.ai capabilities\n\nGenerate the JSON script now.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "build-prompts",
+      "name": "Build AI Prompts",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "llama-3.3-70b-versatile"
+            },
+            {
+              "name": "messages",
+              "value": "={{ [{ \"role\": \"system\", \"content\": $json.system_prompt }, { \"role\": \"user\", \"content\": $json.user_prompt }] }}"
+            },
+            {
+              "name": "temperature",
+              "value": "0.7"
+            },
+            {
+              "name": "max_tokens",
+              "value": "2000"
+            },
+            {
+              "name": "response_format",
+              "value": "={{ { \"type\": \"json_object\" } }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "groq-generate-script",
+      "name": "Groq - Generate Script",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1050, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "groq-api",
+          "name": "Groq API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "script_json",
+              "name": "script_json",
+              "value": "={{ JSON.parse($json.choices[0].message.content) }}",
+              "type": "object"
+            },
+            {
+              "id": "technique_id",
+              "name": "technique_id",
+              "value": "={{ $('Prepare Data').item.json.technique_id }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "parse-ai-response",
+      "name": "Parse AI Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO content_queue (\n  technique_id,\n  script_hook,\n  script_full,\n  before_prompt,\n  after_prompt,\n  scenes_json,\n  cta_text,\n  hashtags,\n  status,\n  script_approved\n) VALUES (\n  {{ $json.technique_id }},\n  '{{ $json.script_json.hook.replace(/'/g, \"''\") }}',\n  '{{ $json.script_json.script.replace(/'/g, \"''\") }}',\n  '{{ $json.script_json.before_prompt.replace(/'/g, \"''\") }}',\n  '{{ $json.script_json.after_prompt.replace(/'/g, \"''\") }}',\n  '{{ JSON.stringify($json.script_json.scenes).replace(/'/g, \"''\") }}',\n  '{{ $json.script_json.cta.replace(/'/g, \"''\") }}',\n  ARRAY[{{ $json.script_json.hashtags.map(h => \"'\" + h + \"'\").join(\",\") }}],\n  'script_pending_approval',\n  FALSE\n) RETURNING id;",
+        "options": {}
+      },
+      "id": "insert-content-queue",
+      "name": "Insert into Content Queue",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1450, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-n8n",
+          "name": "PostgreSQL - n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "content_id",
+              "name": "content_id",
+              "value": "={{ $json.id }}",
+              "type": "number"
+            },
+            {
+              "id": "script_preview",
+              "name": "script_preview",
+              "value": "={{ $('Parse AI Response').item.json.script_json.script.substring(0, 200) }}...",
+              "type": "string"
+            },
+            {
+              "id": "technique_name",
+              "name": "technique_name",
+              "value": "={{ $('Prepare Data').item.json.technique_name }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-telegram-data",
+      "name": "Prepare Telegram Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [1650, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ {\n  \"chat_id\": $env.TELEGRAM_CHAT_ID,\n  \"text\": \"🎬 NEW SCRIPT GENERATED\\n\\n📝 Technique: \" + $json.technique_name + \"\\n\\n✍️ Script Preview:\\n\" + $json.script_preview + \"\\n\\nContent ID: \" + $json.content_id,\n  \"reply_markup\": {\n    \"inline_keyboard\": [[\n      { \"text\": \"✅ Approve\", \"callback_data\": \"approve_script_\" + $json.content_id },\n      { \"text\": \"❌ Reject\", \"callback_data\": \"reject_script_\" + $json.content_id },\n      { \"text\": \"✏️ Edit\", \"callback_data\": \"edit_script_\" + $json.content_id }\n    ]]\n  }\n} }}",
+        "options": {}
+      },
+      "id": "send-telegram-approval",
+      "name": "Send Telegram Approval Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1850, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE trending_techniques\nSET content_created = TRUE,\n    last_used = NOW()\nWHERE id = {{ $('Prepare Data').item.json.technique_id }};",
+        "options": {}
+      },
+      "id": "mark-technique-used",
+      "name": "Mark Technique as Used",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [2050, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-n8n",
+          "name": "PostgreSQL - n8n"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 6 Hours": {
+      "main": [
+        [
+          {
+            "node": "Get Pending Techniques",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Pending Techniques": {
+      "main": [
+        [
+          {
+            "node": "Prepare Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Data": {
+      "main": [
+        [
+          {
+            "node": "Build AI Prompts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build AI Prompts": {
+      "main": [
+        [
+          {
+            "node": "Groq - Generate Script",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq - Generate Script": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "Insert into Content Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert into Content Queue": {
+      "main": [
+        [
+          {
+            "node": "Prepare Telegram Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Telegram Data": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Approval Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Telegram Approval Request": {
+      "main": [
+        [
+          {
+            "node": "Mark Technique as Used",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2024-01-15T12:00:00.000Z",
+  "versionId": "1"
+}

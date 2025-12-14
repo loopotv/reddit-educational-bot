@@ -1,0 +1,57 @@
+# Environment variables (NEVER commit these!)
+.env
+.env.local
+.env.production
+.env.development
+
+# API Keys and Secrets
+*.key
+*.pem
+id_rsa*
+
+# n8n data
+n8n_data/
+.n8n/
+
+# Database
+*.db
+*.sqlite
+
+# Logs
+*.log
+logs/
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Node modules (if any)
+node_modules/
+
+# Python (if any)
+__pycache__/
+*.pyc
+
+# Backups
+*.bak
+*.backup
+*~
+
+# Documentation (except README-REDDIT-API.md for Reddit application)
+*.md
+!README-REDDIT-API.md
+
+# Large media files (music/videos stored on VPS only)
+music/
+contents/
+analysis/
+*.tar.gz
+*.wav
+*.mp4
+*.mp3
+*.png

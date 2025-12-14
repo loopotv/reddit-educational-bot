@@ -1,0 +1,364 @@
+{
+  "name": "AI Tutorial Video Generator - CTLT Method (Wavespeed + FFmpeg)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "generate-tutorial",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "tutorial-gen"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "topic",
+              "name": "topic",
+              "value": "={{ $json.body.topic || 'portrait photography' }}",
+              "type": "string"
+            },
+            {
+              "id": "style",
+              "name": "style",
+              "value": "={{ $json.body.style || 'cinematic editorial' }}",
+              "type": "string"
+            },
+            {
+              "id": "duration",
+              "name": "duration",
+              "value": "={{ $json.body.duration || 45 }}",
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "id": "set-params",
+      "name": "Set Parameters",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "model": "llama-3.3-70b-versatile",
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 2000
+        },
+        "prompt": "=You are an expert AI image generation instructor teaching the CTLT Method (Camera, Tone, Light, Texture).\n\nCreate a {{ $json.duration }}-second tutorial about: {{ $json.topic }}\nStyle: {{ $json.style }}\n\nIMPORTANT OUTPUT FORMAT - Return ONLY valid JSON, no markdown:\n{\n  \"title\": \"Tutorial title\",\n  \"hook\": {\n    \"narration\": \"Opening hook text (5 seconds)\",\n    \"duration\": 5,\n    \"visual_note\": \"Description for image generation\"\n  },\n  \"segments\": [\n    {\n      \"narration\": \"Main teaching point\",\n      \"duration\": 8,\n      \"ctlt_focus\": \"Camera|Tone|Light|Texture\",\n      \"example_prompt\": \"Detailed technical prompt showing CTLT method\",\n      \"image_prompt\": \"Full image generation prompt for this segment\",\n      \"motion\": \"subtle|medium|none - for video clips\"\n    }\n  ],\n  \"cta\": {\n    \"narration\": \"Call to action (5 seconds)\",\n    \"duration\": 5,\n    \"final_prompt\": \"Perfect example showing all CTLT elements\"\n  }\n}\n\nRULES:\n1. Total duration must equal {{ $json.duration }} seconds\n2. Use direct, confident language\n3. Include 4-5 segments covering different CTLT aspects\n4. Each image_prompt must be HIGHLY detailed with specific camera, lighting, texture specs\n5. Alternate between static and motion clips (motion: subtle/medium/none)\n6. Example prompts should demonstrate before/after CTLT method\n7. Use technical photography terms: f-stops, focal lengths, lighting ratios\n8. Return ONLY the JSON object, no additional text or markdown formatting",
+        "text": ""
+      },
+      "id": "groq-script-writer",
+      "name": "Groq - Script Writer",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [650, 300],
+      "credentials": {
+        "groqApi": {
+          "id": "groq-api",
+          "name": "Groq API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse and validate the AI response\nconst response = $input.first().json.response;\n\nlet scriptData;\ntry {\n  scriptData = typeof response === 'string' ? JSON.parse(response) : response;\n} catch (e) {\n  const jsonMatch = response.match(/```json\\s*([\\s\\S]*?)```/) || response.match(/```\\s*([\\s\\S]*?)```/);\n  if (jsonMatch) {\n    scriptData = JSON.parse(jsonMatch[1]);\n  } else {\n    throw new Error('Failed to parse AI response as JSON');\n  }\n}\n\nif (!scriptData.segments || !Array.isArray(scriptData.segments)) {\n  throw new Error('Invalid script structure: missing segments array');\n}\n\nconst items = [];\n\n// Add full script for audio generation\nconst fullNarration = [\n  scriptData.hook.narration,\n  ...scriptData.segments.map(s => s.narration),\n  scriptData.cta.narration\n].join(' ');\n\nitems.push({\n  json: {\n    type: 'full_script',\n    script: scriptData,\n    narration: fullNarration,\n    total_duration: scriptData.segments.reduce((sum, s) => sum + s.duration, 0) + scriptData.hook.duration + scriptData.cta.duration\n  }\n});\n\n// Add image generation tasks\nconst imagePrompts = [\n  { segment: 'hook', prompt: `${scriptData.hook.visual_note}, ${scriptData.style}, editorial photography, 8K, ultra sharp, professional lighting, cinematic composition`, motion: 'none', duration: scriptData.hook.duration },\n  ...scriptData.segments.map((seg, idx) => ({\n    segment: `segment_${idx}`,\n    prompt: `${seg.image_prompt}, ${scriptData.style}, professional photography, 8K ultra detailed, cinematic lighting`,\n    motion: seg.motion || 'none',\n    duration: seg.duration\n  })),\n  { segment: 'cta', prompt: `${scriptData.cta.final_prompt}, ${scriptData.style}, award winning photography, perfect composition, 8K`, motion: 'subtle', duration: scriptData.cta.duration }\n];\n\nimagePrompts.forEach((img, idx) => {\n  items.push({\n    json: {\n      type: 'image_task',\n      index: idx,\n      ...img\n    }\n  });\n});\n\n// Add subtitle generation task\nitems.push({\n  json: {\n    type: 'subtitle_task',\n    script: scriptData\n  }\n});\n\nreturn items;"
+      },
+      "id": "parse-script",
+      "name": "Parse & Split Tasks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.type }}",
+                    "rightValue": "full_script",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "audio_generation"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.type }}",
+                    "rightValue": "image_task",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "image_generation"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.type }}",
+                    "rightValue": "subtitle_task",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "subtitle_generation"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "router",
+      "name": "Route Tasks",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://wavespeed.ai/api/v1/text-to-speech",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={{ JSON.stringify({\n  \"text\": $json.narration,\n  \"model\": \"minimax-speech-02-hd\",\n  \"voice_id\": \"professional_male\",\n  \"speed\": 1.0,\n  \"output_format\": \"mp3\"\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "wavespeed-audio",
+      "name": "Wavespeed - Generate Voiceover",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1300, 100],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wavespeed-auth",
+          "name": "Wavespeed API Key"
+        }
+      },
+      "notes": "Uses Wavespeed MiniMax Speech-02 HD model for high quality voiceover"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://wavespeed.ai/api/v1/text-to-image",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={{ JSON.stringify({\n  \"prompt\": $json.prompt,\n  \"model\": \"flux-dev\",\n  \"aspect_ratio\": \"16:9\",\n  \"output_format\": \"png\",\n  \"quality\": 100\n}) }}",
+        "options": {}
+      },
+      "id": "wavespeed-image",
+      "name": "Wavespeed - Generate Image",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1300, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wavespeed-auth",
+          "name": "Wavespeed API Key"
+        }
+      },
+      "notes": "Uses Wavespeed FLUX-dev model for fast, high-quality image generation"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Save image to VPS filesystem\nconst fs = require('fs');\nconst path = require('path');\n\nconst imageData = $input.first();\nconst imageUrl = imageData.json.output || imageData.json.url || imageData.json.image_url;\nconst index = imageData.json.index;\nconst segment = imageData.json.segment;\n\nif (!imageUrl) {\n  throw new Error('No image URL found in response');\n}\n\n// Download image\nconst response = await $httpRequest({\n  method: 'GET',\n  url: imageUrl,\n  encoding: 'arraybuffer'\n});\n\n// Save to /files/images (mounted from /var/www/images on VPS)\nconst filename = `tutorial_${Date.now()}_${index}_${segment}.png`;\nconst filepath = `/files/images/${filename}`;\n\nfs.writeFileSync(filepath, Buffer.from(response.data));\n\nreturn {\n  json: {\n    ...imageData.json,\n    local_path: filepath,\n    filename: filename,\n    motion: imageData.json.motion || 'none',\n    duration: imageData.json.duration || 5\n  }\n};"
+      },
+      "id": "save-image",
+      "name": "Save Image to VPS",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1500, 300],
+      "notes": "Saves generated images to /var/www/images on VPS for FFmpeg processing"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Save audio to VPS filesystem\nconst fs = require('fs');\nconst path = require('path');\n\nconst audioData = $input.first();\nconst audioBuffer = audioData.binary;\n\nif (!audioBuffer) {\n  throw new Error('No audio data found in response');\n}\n\n// Save to /files/audio (mounted from /var/www/audio on VPS)\nconst filename = `tutorial_voiceover_${Date.now()}.mp3`;\nconst filepath = `/files/audio/${filename}`;\n\nfs.writeFileSync(filepath, audioBuffer.data);\n\nreturn {\n  json: {\n    ...audioData.json,\n    audio_path: filepath,\n    audio_filename: filename\n  }\n};"
+      },
+      "id": "save-audio",
+      "name": "Save Audio to VPS",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1500, 100],
+      "notes": "Saves generated voiceover to /var/www/audio on VPS"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate subtitle SRT file with mixed typography markers\nconst script = $input.first().json.script;\n\nconst subtitles = [];\nlet currentTime = 0;\nlet subIndex = 1;\n\n// Helper to format time for SRT (HH:MM:SS,mmm)\nfunction formatSRTTime(seconds) {\n  const hours = Math.floor(seconds / 3600);\n  const minutes = Math.floor((seconds % 3600) / 60);\n  const secs = Math.floor(seconds % 60);\n  const millis = Math.floor((seconds % 1) * 1000);\n  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')},${String(millis).padStart(3, '0')}`;\n}\n\n// Identify keywords for highlighting\nconst keywords = ['CTLT', 'Camera', 'Tone', 'Light', 'Texture', 'f/', 'mm'];\n\nfunction highlightKeywords(text) {\n  let highlightedText = text;\n  keywords.forEach(kw => {\n    const regex = new RegExp(`\\\\b(${kw}[^\\\\s]*)`, 'gi');\n    highlightedText = highlightedText.replace(regex, '<font color=\"#FFD700\"><b>$1</b></font>');\n  });\n  return highlightedText;\n}\n\n// Process hook\nsubtitles.push({\n  index: subIndex++,\n  start: formatSRTTime(currentTime),\n  end: formatSRTTime(currentTime + script.hook.duration),\n  text: highlightKeywords(script.hook.narration)\n});\ncurrentTime += script.hook.duration;\n\n// Process segments\nscript.segments.forEach(segment => {\n  subtitles.push({\n    index: subIndex++,\n    start: formatSRTTime(currentTime),\n    end: formatSRTTime(currentTime + segment.duration),\n    text: highlightKeywords(segment.narration)\n  });\n  currentTime += segment.duration;\n});\n\n// Process CTA\nsubtitles.push({\n  index: subIndex++,\n  start: formatSRTTime(currentTime),\n  end: formatSRTTime(currentTime + script.cta.duration),\n  text: highlightKeywords(script.cta.narration)\n});\n\n// Generate SRT content\nconst srtContent = subtitles.map(sub => \n  `${sub.index}\\n${sub.start} --> ${sub.end}\\n${sub.text}\\n`\n).join('\\n');\n\nconst fs = require('fs');\nconst filename = `tutorial_subtitles_${Date.now()}.srt`;\nconst filepath = `/files/movies/${filename}`;\n\nfs.writeFileSync(filepath, srtContent, 'utf8');\n\nreturn [{\n  json: {\n    subtitle_path: filepath,\n    subtitle_filename: filename,\n    subtitle_count: subtitles.length\n  }\n}];"
+      },
+      "id": "generate-subtitles",
+      "name": "Generate Subtitles SRT",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 500],
+      "notes": "Creates SRT subtitle file with keyword highlighting for FFmpeg"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Wait for all parallel tasks to complete\nconst items = $input.all();\n\nconst audioItem = items.find(i => i.json.audio_path);\nconst imageItems = items.filter(i => i.json.local_path).sort((a, b) => a.json.index - b.json.index);\nconst subtitleItem = items.find(i => i.json.subtitle_path);\n\nif (!audioItem) {\n  throw new Error('Missing audio component');\n}\nif (imageItems.length === 0) {\n  throw new Error('Missing image components');\n}\nif (!subtitleItem) {\n  throw new Error('Missing subtitle component');\n}\n\nreturn [{\n  json: {\n    audio_path: audioItem.json.audio_path,\n    images: imageItems.map(img => ({\n      path: img.json.local_path,\n      duration: img.json.duration,\n      motion: img.json.motion,\n      index: img.json.index\n    })),\n    subtitle_path: subtitleItem.json.subtitle_path,\n    script: audioItem.json.script || items.find(i => i.json.script)?.json.script\n  }\n}];"
+      },
+      "id": "merge-components",
+      "name": "Merge All Components",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1700, 300]
+    },
+    {
+      "parameters": {
+        "command": "=#!/bin/bash\n\n# FFmpeg Video Assembly Script\n# This creates a professional tutorial video with images, audio, and subtitles\n\nset -e\n\nAUDIO=\"{{ $json.audio_path }}\"\nSUBTITLES=\"{{ $json.subtitle_path }}\"\nOUTPUT=\"/files/movies/tutorial_final_{{ $now.format('X') }}.mp4\"\nTMP_DIR=\"/tmp/tutorial_{{ $now.format('X') }}\"\n\nmkdir -p \"$TMP_DIR\"\n\n# Create input file list for concat\nINPUT_LIST=\"$TMP_DIR/inputs.txt\"\ntouch \"$INPUT_LIST\"\n\n{{ $json.images.forEach((img, idx) => {\n  const motion = img.motion;\n  const duration = img.duration;\n  const inputPath = img.path;\n  const outputPath = `$TMP_DIR/video_${idx}.mp4`;\n  \n  // Apply motion effects based on motion type\n  let zoomPan = '';\n  if (motion === 'medium') {\n    zoomPan = \"zoompan=z='min(zoom+0.0015,1.2)':d=${duration * 30}:s=1920x1080\";\n  } else if (motion === 'subtle') {\n    zoomPan = \"zoompan=z='min(zoom+0.0008,1.1)':d=${duration * 30}:s=1920x1080\";\n  } else {\n    zoomPan = \"scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2\";\n  }\n  \n  return `\n# Process image ${idx}\nffmpeg -loop 1 -i \"${inputPath}\" -vf \"${zoomPan}\" -t ${duration} -c:v libx264 -pix_fmt yuv420p -r 30 \"${outputPath}\"\necho \"file '${outputPath}'\" >> \"$INPUT_LIST\"\n  `;\n}).join('') }}\n\n# Concatenate all video segments\nffmpeg -f concat -safe 0 -i \"$INPUT_LIST\" -c copy \"$TMP_DIR/video_no_audio.mp4\"\n\n# Add audio\nffmpeg -i \"$TMP_DIR/video_no_audio.mp4\" -i \"$AUDIO\" -c:v copy -c:a aac -b:a 192k -shortest \"$TMP_DIR/video_with_audio.mp4\"\n\n# Add subtitles with styling\nffmpeg -i \"$TMP_DIR/video_with_audio.mp4\" -vf \"subtitles=$SUBTITLES:force_style='FontName=Inter,FontSize=48,PrimaryColour=&HFFFFFF,OutlineColour=&H000000,BorderStyle=1,Outline=2,Shadow=1,MarginV=80,Alignment=2'\" -c:a copy \"$OUTPUT\"\n\n# Cleanup\nrm -rf \"$TMP_DIR\"\n\necho \"$OUTPUT\"",
+        "options": {}
+      },
+      "id": "ffmpeg-render",
+      "name": "FFmpeg - Assemble Video",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [1900, 300],
+      "notes": "Uses FFmpeg to create final video with motion effects, audio, and styled subtitles"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse FFmpeg output to get final video path\nconst output = $input.first().json;\nconst videoPath = output.stdout ? output.stdout.trim().split('\\n').pop() : null;\n\nif (!videoPath) {\n  throw new Error('FFmpeg did not return video path');\n}\n\n// Generate public URL (assuming nginx serves /var/www/movies as /videos/)\nconst filename = videoPath.split('/').pop();\nconst publicUrl = `https://${process.env.N8N_HOST}/videos/${filename}`;\n\nreturn [{\n  json: {\n    status: 'success',\n    video_url: publicUrl,\n    local_path: videoPath,\n    filename: filename,\n    message: 'Tutorial video generated successfully using Wavespeed + FFmpeg'\n  }\n}];"
+      },
+      "id": "prepare-response",
+      "name": "Prepare Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2100, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Send Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2300, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{ "node": "Set Parameters", "type": "main", "index": 0 }]]
+    },
+    "Set Parameters": {
+      "main": [[{ "node": "Groq - Script Writer", "type": "main", "index": 0 }]]
+    },
+    "Groq - Script Writer": {
+      "main": [[{ "node": "Parse & Split Tasks", "type": "main", "index": 0 }]]
+    },
+    "Parse & Split Tasks": {
+      "main": [[{ "node": "Route Tasks", "type": "main", "index": 0 }]]
+    },
+    "Route Tasks": {
+      "main": [
+        [{ "node": "Wavespeed - Generate Voiceover", "type": "main", "index": 0 }],
+        [{ "node": "Wavespeed - Generate Image", "type": "main", "index": 0 }],
+        [{ "node": "Generate Subtitles SRT", "type": "main", "index": 0 }]
+      ]
+    },
+    "Wavespeed - Generate Voiceover": {
+      "main": [[{ "node": "Save Audio to VPS", "type": "main", "index": 0 }]]
+    },
+    "Wavespeed - Generate Image": {
+      "main": [[{ "node": "Save Image to VPS", "type": "main", "index": 0 }]]
+    },
+    "Save Audio to VPS": {
+      "main": [[{ "node": "Merge All Components", "type": "main", "index": 0 }]]
+    },
+    "Save Image to VPS": {
+      "main": [[{ "node": "Merge All Components", "type": "main", "index": 0 }]]
+    },
+    "Generate Subtitles SRT": {
+      "main": [[{ "node": "Merge All Components", "type": "main", "index": 0 }]]
+    },
+    "Merge All Components": {
+      "main": [[{ "node": "FFmpeg - Assemble Video", "type": "main", "index": 0 }]]
+    },
+    "FFmpeg - Assemble Video": {
+      "main": [[{ "node": "Prepare Response", "type": "main", "index": 0 }]]
+    },
+    "Prepare Response": {
+      "main": [[{ "node": "Send Response", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-12-13T00:00:00.000Z",
+  "versionId": "2"
+}

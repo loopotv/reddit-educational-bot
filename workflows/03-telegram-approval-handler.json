@@ -1,0 +1,595 @@
+{
+  "name": "03 - Telegram Approval Handler",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "telegram-callback",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Telegram Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "telegram-callback-handler"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "callback_data",
+              "name": "callback_data",
+              "value": "={{ $json.body.callback_query.data }}",
+              "type": "string"
+            },
+            {
+              "id": "message_id",
+              "name": "message_id",
+              "value": "={{ $json.body.callback_query.message.message_id }}",
+              "type": "number"
+            },
+            {
+              "id": "chat_id",
+              "name": "chat_id",
+              "value": "={{ $json.body.callback_query.message.chat.id }}",
+              "type": "number"
+            },
+            {
+              "id": "callback_query_id",
+              "name": "callback_query_id",
+              "value": "={{ $json.body.callback_query.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-callback-data",
+      "name": "Extract Callback Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.callback_data }}",
+              "operation": "contains",
+              "value2": "approve_script_"
+            }
+          ]
+        }
+      },
+      "id": "is-script-approval",
+      "name": "Is Script Approval?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "content_id",
+              "name": "content_id",
+              "value": "={{ $json.callback_data.replace('approve_script_', '').replace('reject_script_', '').replace('approve_video_', '').replace('reject_video_', '') }}",
+              "type": "number"
+            },
+            {
+              "id": "action",
+              "name": "action",
+              "value": "={{ $json.callback_data.includes('approve') ? 'approve' : 'reject' }}",
+              "type": "string"
+            },
+            {
+              "id": "type",
+              "name": "type",
+              "value": "={{ $json.callback_data.includes('script') ? 'script' : 'video' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "parse-action",
+      "name": "Parse Action",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE content_queue\nSET script_approved = TRUE,\n    status = 'ready_for_render',\n    script_approved_at = NOW()\nWHERE id = {{ $json.content_id }}\nRETURNING *;",
+        "options": {}
+      },
+      "id": "approve-script-db",
+      "name": "Approve Script in DB",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1050, 150],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-n8n",
+          "name": "PostgreSQL - n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/answerCallbackQuery",
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ {\n  \"callback_query_id\": $('Extract Callback Data').item.json.callback_query_id,\n  \"text\": \"✅ Script approved! Moving to render queue.\",\n  \"show_alert\": false\n} }}",
+        "options": {}
+      },
+      "id": "answer-callback-approve",
+      "name": "Answer Callback - Approve",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1250, 150]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/editMessageText",
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ {\n  \"chat_id\": $('Extract Callback Data').item.json.chat_id,\n  \"message_id\": $('Extract Callback Data').item.json.message_id,\n  \"text\": $('Approve Script in DB').item.json.script_full.substring(0,300) + \"\\n\\n✅ APPROVED - Added to render queue\",\n  \"reply_markup\": { \"inline_keyboard\": [] }\n} }}",
+        "options": {}
+      },
+      "id": "update-message-approve",
+      "name": "Update Message - Approve",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1450, 150]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE content_queue\nSET script_approved = FALSE,\n    status = 'script_rejected'\nWHERE id = {{ $json.content_id }}\nRETURNING *;",
+        "options": {}
+      },
+      "id": "reject-script-db",
+      "name": "Reject Script in DB",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1050, 250],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-n8n",
+          "name": "PostgreSQL - n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/answerCallbackQuery",
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ {\n  \"callback_query_id\": $('Extract Callback Data').item.json.callback_query_id,\n  \"text\": \"❌ Script rejected.\",\n  \"show_alert\": false\n} }}",
+        "options": {}
+      },
+      "id": "answer-callback-reject",
+      "name": "Answer Callback - Reject",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1250, 250]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/editMessageText",
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ {\n  \"chat_id\": $('Extract Callback Data').item.json.chat_id,\n  \"message_id\": $('Extract Callback Data').item.json.message_id,\n  \"text\": \"❌ REJECTED - Script discarded\",\n  \"reply_markup\": { \"inline_keyboard\": [] }\n} }}",
+        "options": {}
+      },
+      "id": "update-message-reject",
+      "name": "Update Message - Reject",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1450, 250]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.callback_data }}",
+              "operation": "contains",
+              "value2": "approve_video_"
+            }
+          ]
+        }
+      },
+      "id": "is-video-approval",
+      "name": "Is Video Approval?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [650, 500]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "content_id",
+              "name": "content_id",
+              "value": "={{ $json.callback_data.replace('approve_video_', '').replace('reject_video_', '') }}",
+              "type": "number"
+            },
+            {
+              "id": "action",
+              "name": "action",
+              "value": "={{ $json.callback_data.includes('approve') ? 'approve' : 'reject' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "parse-video-action",
+      "name": "Parse Video Action",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [850, 400]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE content_queue\nSET video_approved = TRUE,\n    status = 'ready_to_publish',\n    video_approved_at = NOW()\nWHERE id = {{ $json.content_id }}\nRETURNING *;",
+        "options": {}
+      },
+      "id": "approve-video-db",
+      "name": "Approve Video in DB",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1050, 350],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-n8n",
+          "name": "PostgreSQL - n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/answerCallbackQuery",
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ {\n  \"callback_query_id\": $('Extract Callback Data').item.json.callback_query_id,\n  \"text\": \"✅ Video approved! Ready for publishing.\",\n  \"show_alert\": false\n} }}",
+        "options": {}
+      },
+      "id": "answer-callback-video-approve",
+      "name": "Answer Callback - Video Approve",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1250, 350]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/editMessageText",
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ {\n  \"chat_id\": $('Extract Callback Data').item.json.chat_id,\n  \"message_id\": $('Extract Callback Data').item.json.message_id,\n  \"text\": \"✅ VIDEO APPROVED - Ready for TikTok/Instagram publishing\",\n  \"reply_markup\": { \"inline_keyboard\": [] }\n} }}",
+        "options": {}
+      },
+      "id": "update-message-video-approve",
+      "name": "Update Message - Video Approve",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1450, 350]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE content_queue\nSET video_approved = FALSE,\n    status = 'video_rejected'\nWHERE id = {{ $json.content_id }}\nRETURNING *;",
+        "options": {}
+      },
+      "id": "reject-video-db",
+      "name": "Reject Video in DB",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1050, 450],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-n8n",
+          "name": "PostgreSQL - n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/answerCallbackQuery",
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ {\n  \"callback_query_id\": $('Extract Callback Data').item.json.callback_query_id,\n  \"text\": \"❌ Video rejected.\",\n  \"show_alert\": false\n} }}",
+        "options": {}
+      },
+      "id": "answer-callback-video-reject",
+      "name": "Answer Callback - Video Reject",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1250, 450]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/editMessageText",
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ {\n  \"chat_id\": $('Extract Callback Data').item.json.chat_id,\n  \"message_id\": $('Extract Callback Data').item.json.message_id,\n  \"text\": \"❌ VIDEO REJECTED - Will not be published\",\n  \"reply_markup\": { \"inline_keyboard\": [] }\n} }}",
+        "options": {}
+      },
+      "id": "update-message-video-reject",
+      "name": "Update Message - Video Reject",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1450, 450]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"ok\": true } }}",
+        "options": {}
+      },
+      "id": "respond-to-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1650, 300]
+    }
+  ],
+  "connections": {
+    "Telegram Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract Callback Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Callback Data": {
+      "main": [
+        [
+          {
+            "node": "Is Script Approval?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Is Video Approval?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Script Approval?": {
+      "main": [
+        [
+          {
+            "node": "Parse Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Action": {
+      "main": [
+        [
+          {
+            "node": "Approve Script in DB",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Reject Script in DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approve Script in DB": {
+      "main": [
+        [
+          {
+            "node": "Answer Callback - Approve",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Answer Callback - Approve": {
+      "main": [
+        [
+          {
+            "node": "Update Message - Approve",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Message - Approve": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reject Script in DB": {
+      "main": [
+        [
+          {
+            "node": "Answer Callback - Reject",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Answer Callback - Reject": {
+      "main": [
+        [
+          {
+            "node": "Update Message - Reject",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Message - Reject": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Video Approval?": {
+      "main": [
+        [
+          {
+            "node": "Parse Video Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Video Action": {
+      "main": [
+        [
+          {
+            "node": "Approve Video in DB",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Reject Video in DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approve Video in DB": {
+      "main": [
+        [
+          {
+            "node": "Answer Callback - Video Approve",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Answer Callback - Video Approve": {
+      "main": [
+        [
+          {
+            "node": "Update Message - Video Approve",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Message - Video Approve": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reject Video in DB": {
+      "main": [
+        [
+          {
+            "node": "Answer Callback - Video Reject",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Answer Callback - Video Reject": {
+      "main": [
+        [
+          {
+            "node": "Update Message - Video Reject",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Message - Video Reject": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2024-01-15T12:00:00.000Z",
+  "versionId": "1"
+}

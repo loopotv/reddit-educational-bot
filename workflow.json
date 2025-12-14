@@ -1,0 +1,447 @@
+{
+  "name": "AI Tutorial Video Generator - CTLT Method",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "generate-tutorial",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "tutorial-gen"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "topic",
+              "name": "topic",
+              "value": "={{ $json.body.topic || 'portrait photography' }}",
+              "type": "string"
+            },
+            {
+              "id": "style",
+              "name": "style",
+              "value": "={{ $json.body.style || 'cinematic editorial' }}",
+              "type": "string"
+            },
+            {
+              "id": "duration",
+              "name": "duration",
+              "value": "={{ $json.body.duration || 45 }}",
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "id": "set-params",
+      "name": "Set Parameters",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "model": "llama-3.3-70b-versatile",
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 2000
+        },
+        "prompt": "=You are an expert AI image generation instructor teaching the CTLT Method (Camera, Tone, Light, Texture).\n\nCreate a {{ $json.duration }}-second tutorial about: {{ $json.topic }}\nStyle: {{ $json.style }}\n\nIMPORTANT OUTPUT FORMAT - Return ONLY valid JSON, no markdown:\n{\n  \"title\": \"Tutorial title\",\n  \"hook\": {\n    \"narration\": \"Opening hook text (5 seconds)\",\n    \"duration\": 5,\n    \"visual_note\": \"Description for image generation\"\n  },\n  \"segments\": [\n    {\n      \"narration\": \"Main teaching point\",\n      \"duration\": 8,\n      \"ctlt_focus\": \"Camera|Tone|Light|Texture\",\n      \"example_prompt\": \"Detailed technical prompt showing CTLT method\",\n      \"image_prompt\": \"Full image generation prompt for this segment\",\n      \"motion\": \"subtle|medium|none - for video clips\"\n    }\n  ],\n  \"cta\": {\n    \"narration\": \"Call to action (5 seconds)\",\n    \"duration\": 5,\n    \"final_prompt\": \"Perfect example showing all CTLT elements\"\n  }\n}\n\nRULES:\n1. Total duration must equal {{ $json.duration }} seconds\n2. Use direct, confident language\n3. Include 4-5 segments covering different CTLT aspects\n4. Each image_prompt must be HIGHLY detailed with specific camera, lighting, texture specs\n5. Alternate between static and motion clips (motion: subtle/medium/none)\n6. Example prompts should demonstrate before/after CTLT method\n7. Use technical photography terms: f-stops, focal lengths, lighting ratios\n8. Return ONLY the JSON object, no additional text or markdown formatting",
+        "text": ""
+      },
+      "id": "groq-script-writer",
+      "name": "Groq - Script Writer",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [650, 300],
+      "credentials": {
+        "groqApi": {
+          "id": "groq-api",
+          "name": "Groq API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse and validate the AI response\nconst response = $input.first().json.response;\n\nlet scriptData;\ntry {\n  // Try to parse as JSON\n  scriptData = typeof response === 'string' ? JSON.parse(response) : response;\n} catch (e) {\n  // If parsing fails, try to extract JSON from markdown\n  const jsonMatch = response.match(/```json\\s*([\\s\\S]*?)```/) || response.match(/```\\s*([\\s\\S]*?)```/);\n  if (jsonMatch) {\n    scriptData = JSON.parse(jsonMatch[1]);\n  } else {\n    throw new Error('Failed to parse AI response as JSON');\n  }\n}\n\n// Validate structure\nif (!scriptData.segments || !Array.isArray(scriptData.segments)) {\n  throw new Error('Invalid script structure: missing segments array');\n}\n\n// Prepare for parallel processing\nconst items = [];\n\n// Add full script for audio generation\nitems.push({\n  json: {\n    type: 'full_script',\n    script: scriptData,\n    narration: [\n      scriptData.hook.narration,\n      ...scriptData.segments.map(s => s.narration),\n      scriptData.cta.narration\n    ].join(' '),\n    total_duration: scriptData.segments.reduce((sum, s) => sum + s.duration, 0) + scriptData.hook.duration + scriptData.cta.duration\n  }\n});\n\n// Add image generation tasks\nconst imagePrompts = [\n  { segment: 'hook', prompt: `${scriptData.hook.visual_note}, ${scriptData.style}, editorial photography, 8K, ultra sharp, professional lighting, cinematic composition, --ar 16:9`, motion: 'none' },\n  ...scriptData.segments.map((seg, idx) => ({\n    segment: `segment_${idx}`,\n    prompt: `${seg.image_prompt}, --ar 16:9, ${scriptData.style}, professional photography, 8K ultra detailed, cinematic lighting`,\n    motion: seg.motion || 'none',\n    example_prompt: seg.example_prompt\n  })),\n  { segment: 'cta', prompt: `${scriptData.cta.final_prompt}, ${scriptData.style}, award winning photography, perfect composition, 8K, --ar 16:9`, motion: 'subtle' }\n];\n\nimagePrompts.forEach((img, idx) => {\n  items.push({\n    json: {\n      type: 'image_task',\n      index: idx,\n      ...img\n    }\n  });\n});\n\n// Add subtitle generation task\nitems.push({\n  json: {\n    type: 'subtitle_task',\n    script: scriptData\n  }\n});\n\nreturn items;"
+      },
+      "id": "parse-script",
+      "name": "Parse & Split Tasks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.type }}",
+                    "rightValue": "full_script",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "audio_generation"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.type }}",
+                    "rightValue": "image_task",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "image_generation"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.type }}",
+                    "rightValue": "subtitle_task",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "subtitle_generation"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "router",
+      "name": "Route Tasks",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "={{ $json.narration }}"
+            },
+            {
+              "name": "model_id",
+              "value": "eleven_multilingual_v2"
+            },
+            {
+              "name": "voice_settings",
+              "value": "={\"stability\": 0.5, \"similarity_boost\": 0.75, \"style\": 0.5}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "elevenlabs-audio",
+      "name": "ElevenLabs - Generate Voiceover",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1300, 100],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "elevenlabs-auth",
+          "name": "ElevenLabs API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.replicate.com/v1/predictions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "version",
+              "value": "black-forest-labs/flux-1.1-pro"
+            },
+            {
+              "name": "input",
+              "value": "={{ {\"prompt\": $json.prompt, \"aspect_ratio\": \"16:9\", \"output_format\": \"png\", \"output_quality\": 100, \"safety_tolerance\": 2} }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "replicate-image",
+      "name": "Replicate - Generate Image",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1300, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "replicate-auth",
+          "name": "Replicate API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "wait-replicate",
+      "name": "Wait for Image",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1500, 300],
+      "webhookId": "wait-img"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.body.urls.get }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "get-image-status",
+      "name": "Check Image Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1700, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "replicate-auth",
+          "name": "Replicate API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "status-check",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "succeeded",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-if-ready",
+      "name": "Image Ready?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate subtitle JSON with mixed typography\nconst script = $input.first().json.script;\n\nconst subtitles = [];\nlet currentTime = 0;\n\n// Helper function to create subtitle with mixed fonts\nfunction createSubtitle(text, startTime, duration) {\n  const words = text.split(' ');\n  const wordTiming = duration / words.length;\n  \n  // Identify keywords for serif font (technical terms, numbers, CTLT)\n  const serifKeywords = ['CTLT', 'Camera', 'Tone', 'Light', 'Texture', 'f/', 'mm', '35mm', '50mm', '85mm'];\n  \n  const styledWords = words.map((word, idx) => {\n    const isKeyword = serifKeywords.some(kw => word.includes(kw)) || /\\d/.test(word);\n    return {\n      word: word,\n      start: startTime + (idx * wordTiming),\n      duration: wordTiming,\n      font: isKeyword ? 'Playfair Display' : 'Inter',\n      weight: isKeyword ? 700 : 400,\n      highlight: isKeyword\n    };\n  });\n  \n  return {\n    text: text,\n    start: startTime,\n    end: startTime + duration,\n    duration: duration,\n    words: styledWords\n  };\n}\n\n// Process hook\nsubtitles.push(createSubtitle(script.hook.narration, currentTime, script.hook.duration));\ncurrentTime += script.hook.duration;\n\n// Process segments\nscript.segments.forEach(segment => {\n  subtitles.push(createSubtitle(segment.narration, currentTime, segment.duration));\n  currentTime += segment.duration;\n});\n\n// Process CTA\nsubtitles.push(createSubtitle(script.cta.narration, currentTime, script.cta.duration));\n\nreturn [{\n  json: {\n    subtitles: subtitles,\n    style: {\n      position: 'bottom',\n      offset_y: 150,\n      primary_font: 'Playfair Display',\n      secondary_font: 'Inter',\n      font_size: 48,\n      line_height: 1.4,\n      color: '#FFFFFF',\n      background: 'linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.7) 100%)',\n      animation: 'fade-in-word',\n      highlight_color: '#FFD700'\n    }\n  }\n}];"
+      },
+      "id": "generate-subtitles",
+      "name": "Generate Subtitles JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 500]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.shotstack.io/{{ $env.SHOTSTACK_ENV }}/render",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "timeline",
+              "value": "={{ $json.timeline }}"
+            },
+            {
+              "name": "output",
+              "value": "={{ {\"format\": \"mp4\", \"resolution\": \"1080\", \"fps\": 30, \"quality\": \"high\"} }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "shotstack-render",
+      "name": "Shotstack - Assemble Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2300, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "shotstack-auth",
+          "name": "Shotstack API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\"status\": \"success\", \"video_url\": $json.response.url, \"render_id\": $json.response.id} }}",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Send Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2500, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge all assets and create Shotstack timeline\nconst items = $input.all();\n\n// Extract components\nconst audioItem = items.find(i => i.json.type === 'full_script');\nconst imageItems = items.filter(i => i.json.type === 'image_task' && i.json.output);\nconst subtitleItem = items.find(i => i.json.subtitles);\n\nif (!audioItem || imageItems.length === 0 || !subtitleItem) {\n  throw new Error('Missing required components for video assembly');\n}\n\nconst script = audioItem.json.script;\nconst subtitles = subtitleItem.json.subtitles;\nconst style = subtitleItem.json.style;\n\n// Build timeline clips\nconst clips = [];\nlet currentTime = 0;\n\n// Hook clip\nif (imageItems[0]) {\n  clips.push({\n    asset: {\n      type: 'image',\n      src: imageItems[0].json.output\n    },\n    start: currentTime,\n    length: script.hook.duration,\n    fit: 'cover',\n    scale: 1.1,\n    transition: {\n      in: 'fade',\n      out: 'fade'\n    },\n    effect: 'zoomIn'\n  });\n  currentTime += script.hook.duration;\n}\n\n// Segment clips\nscript.segments.forEach((segment, idx) => {\n  const imageIdx = idx + 1;\n  if (imageItems[imageIdx]) {\n    clips.push({\n      asset: {\n        type: 'image',\n        src: imageItems[imageIdx].json.output\n      },\n      start: currentTime,\n      length: segment.duration,\n      fit: 'cover',\n      scale: 1.05,\n      transition: {\n        in: 'fade',\n        out: 'fade'\n      },\n      effect: segment.motion === 'medium' ? 'zoomIn' : 'slideRight'\n    });\n    currentTime += segment.duration;\n  }\n});\n\n// CTA clip\nconst ctaIdx = imageItems.length - 1;\nif (imageItems[ctaIdx]) {\n  clips.push({\n    asset: {\n      type: 'image',\n      src: imageItems[ctaIdx].json.output\n    },\n    start: currentTime,\n    length: script.cta.duration,\n    fit: 'cover',\n    scale: 1.1,\n    transition: {\n      in: 'fade',\n      out: 'fade'\n    },\n    effect: 'zoomOut'\n  });\n}\n\n// Add audio track\nconst audioTrack = {\n  clips: [{\n    asset: {\n      type: 'audio',\n      src: audioItem.json.audio_url // You'll need to store this from ElevenLabs\n    },\n    start: 0,\n    length: audioItem.json.total_duration\n  }]\n};\n\n// Add subtitle track with styled HTML\nconst subtitleClips = subtitles.map(sub => ({\n  asset: {\n    type: 'html',\n    html: `<div style=\"font-family: ${style.secondary_font}; font-size: ${style.font_size}px; color: ${style.color}; text-align: center; padding: 20px; background: ${style.background};\">\n      ${sub.words.map(w => `<span style=\"font-family: ${w.font}; font-weight: ${w.weight}; ${w.highlight ? 'color: ' + style.highlight_color : ''}\">${w.word}</span>`).join(' ')}\n    </div>`,\n    css: '',\n    width: 1920,\n    height: 200\n  },\n  start: sub.start,\n  length: sub.duration,\n  position: 'bottom',\n  offset: {\n    y: -style.offset_y\n  },\n  transition: {\n    in: 'fade',\n    out: 'fade'\n  }\n}));\n\n// Construct final timeline\nconst timeline = {\n  soundtrack: audioTrack,\n  tracks: [\n    { clips: clips },\n    { clips: subtitleClips }\n  ]\n};\n\nreturn [{\n  json: {\n    timeline: timeline,\n    type: 'video_assembly'\n  }\n}];"
+      },
+      "id": "merge-components",
+      "name": "Merge All Components",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2100, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{ "node": "Set Parameters", "type": "main", "index": 0 }]]
+    },
+    "Set Parameters": {
+      "main": [[{ "node": "Groq - Script Writer", "type": "main", "index": 0 }]]
+    },
+    "Groq - Script Writer": {
+      "main": [[{ "node": "Parse & Split Tasks", "type": "main", "index": 0 }]]
+    },
+    "Parse & Split Tasks": {
+      "main": [[{ "node": "Route Tasks", "type": "main", "index": 0 }]]
+    },
+    "Route Tasks": {
+      "main": [
+        [{ "node": "ElevenLabs - Generate Voiceover", "type": "main", "index": 0 }],
+        [{ "node": "Replicate - Generate Image", "type": "main", "index": 0 }],
+        [{ "node": "Generate Subtitles JSON", "type": "main", "index": 0 }]
+      ]
+    },
+    "Replicate - Generate Image": {
+      "main": [[{ "node": "Wait for Image", "type": "main", "index": 0 }]]
+    },
+    "Wait for Image": {
+      "main": [[{ "node": "Check Image Status", "type": "main", "index": 0 }]]
+    },
+    "Check Image Status": {
+      "main": [[{ "node": "Image Ready?", "type": "main", "index": 0 }]]
+    },
+    "Image Ready?": {
+      "main": [
+        [{ "node": "Merge All Components", "type": "main", "index": 0 }],
+        [{ "node": "Wait for Image", "type": "main", "index": 0 }]
+      ]
+    },
+    "ElevenLabs - Generate Voiceover": {
+      "main": [[{ "node": "Merge All Components", "type": "main", "index": 0 }]]
+    },
+    "Generate Subtitles JSON": {
+      "main": [[{ "node": "Merge All Components", "type": "main", "index": 0 }]]
+    },
+    "Merge All Components": {
+      "main": [[{ "node": "Shotstack - Assemble Video", "type": "main", "index": 0 }]]
+    },
+    "Shotstack - Assemble Video": {
+      "main": [[{ "node": "Send Response", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-01-13T00:00:00.000Z",
+  "versionId": "1"
+}
