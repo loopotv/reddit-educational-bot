@@ -59,3 +59,9 @@ analysis/
 *.mp4
 *.mp3
 *.png
+
+# Deployment and infrastructure files (VPS-specific)
+*.sh
+docker-compose.yml
+nginx-config-example.conf
+test-*.py
