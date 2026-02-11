@@ -1,0 +1,638 @@
+{
+  "name": "01 - VIVID Editorial Calendar",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "daily-trigger",
+      "name": "Daily at 8 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "editorial-calendar-trigger",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 500],
+      "webhookId": "editorial-calendar-manual"
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "mode": "id",
+          "value": "={{ $env.GOOGLE_SHEET_CALENDAR_ID }}"
+        },
+        "sheetName": {
+          "mode": "name",
+          "value": "Calendario"
+        },
+        "options": {}
+      },
+      "id": "read-calendar",
+      "name": "Read Calendar Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [500, 400],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-oauth",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter for today's pending items\nconst today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD\nconst items = $input.all();\n\nconst pending = items.filter(item => {\n  const row = item.json;\n  return row.date === today && row.status === 'pending';\n});\n\nif (pending.length === 0) {\n  // No items for today\n  return [{ json: { no_items: true, date: today, message: 'No pending calendar items for today' } }];\n}\n\n// Add row_number for Google Sheets writeback (1-indexed, +1 for header)\nreturn pending.map((item, idx) => ({\n  json: {\n    ...item.json,\n    row_number: items.indexOf(item) + 2, // +2 for header row + 0-index\n    no_items: false\n  }\n}));"
+      },
+      "id": "filter-today",
+      "name": "Filter Today's Pending Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.no_items }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "has-items",
+      "name": "Has Pending Items?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.pillar }}",
+                    "rightValue": "WOW",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "wow"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.pillar }}",
+                    "rightValue": "EDUCA",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "educa"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.pillar }}",
+                    "rightValue": "VIAGGIO",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "viaggio"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "none"
+        }
+      },
+      "id": "switch-pillar",
+      "name": "Switch by Pillar",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1100, 400]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "system_prompt",
+              "name": "system_prompt",
+              "value": "You are VIVID's creative director for ultra-short, cinematic WOW MOMENT videos.\n\nYour task: Create a 12-second sensory-driven video script for Instagram Reels / TikTok.\n\nFORMAT: 4 mandatory phases, strict timing:\n- TRIGGER (0-2s): A human action that starts the experience. Close-up of hands, pour, click, gesture. The viewer must feel \"I want to watch this.\"\n- IMMERSION (2-6s): Ultra-macro sensory detail. ASMR-worthy. Slow motion. The viewer must feel the texture, temperature, moisture. This is the money shot.\n- REVEAL (6-8s): Zoom out to show the full context. The \"ah, now I see what this is\" moment. Wide angle, beautiful composition.\n- CTA (8-12s): Product/brand beauty shot with VIVID branding. Text overlay. Clean, aspirational.\n\nCRITICAL RULES:\n1. NO voiceover. NO spoken words. Audio is ONLY music + ASMR layers.\n2. Image prompts must be extremely detailed for Flux AI generation (9:16 vertical, 1080x1920).\n3. Every image prompt MUST specify: camera angle, lens, lighting, texture detail, color temperature, depth of field.\n4. TRIGGER phase must show HUMAN HANDS or HUMAN ACTION (not just product).\n5. IMMERSION phase must be ULTRA MACRO (extreme close-up, water droplets, condensation, steam, foam texture).\n6. REVEAL phase must be WIDE/MEDIUM shot showing full scene context.\n7. CTA phase must include the product with clean branding space.\n8. Total duration must equal exactly 12 seconds.\n9. All CTA text must be in ITALIAN.\n\nMOTION TYPES (for FFmpeg Ken Burns / camera simulation):\n- \"none\": Static frame, no movement\n- \"macro_zoom_in\": Slow push into extreme detail (for IMMERSION)\n- \"zoom_out\": Pull back to reveal wider context (for REVEAL)\n- \"subtle\": Gentle drift/sway (for CTA)\n- \"dolly_forward\": Forward tracking motion\n- \"dolly_lateral\": Side-to-side tracking\n\nReturn ONLY valid JSON (no markdown, no extra text):\n{\n  \"hook_type\": \"beer|food|hotel|cocktail|beauty|product|pizzeria|airbnb\",\n  \"industry\": \"Industry name\",\n  \"total_duration\": 12,\n  \"phases\": [\n    {\n      \"phase\": \"TRIGGER\",\n      \"duration\": 2,\n      \"image_prompt\": \"(ultra-detailed 9:16 Flux prompt for human action scene)\",\n      \"motion\": \"none or dolly_forward\",\n      \"audio_note\": \"sound description\"\n    },\n    {\n      \"phase\": \"IMMERSION\",\n      \"duration\": 4,\n      \"image_prompt\": \"(ultra-detailed 9:16 Flux prompt for macro sensory detail)\",\n      \"motion\": \"macro_zoom_in\",\n      \"audio_note\": \"ASMR sound description\"\n    },\n    {\n      \"phase\": \"REVEAL\",\n      \"duration\": 2,\n      \"image_prompt\": \"(ultra-detailed 9:16 Flux prompt for wide reveal shot)\",\n      \"motion\": \"zoom_out\",\n      \"audio_note\": \"music/atmosphere\"\n    },\n    {\n      \"phase\": \"CTA\",\n      \"duration\": 4,\n      \"image_prompt\": \"(ultra-detailed 9:16 Flux prompt with branding space)\",\n      \"motion\": \"subtle\",\n      \"audio_note\": \"jingle\",\n      \"cta_text\": \"Main CTA text in Italian\",\n      \"cta_secondary\": \"Secondary CTA line in Italian\"\n    }\n  ],\n  \"music_mood\": \"cinematic_asmr\",\n  \"hashtags\": [\"#VIVID\", \"#VideoMarketing\", \"#AIVideo\", \"#ContentCreation\", \"#MadeWithVIVID\"]\n}",
+              "type": "string"
+            },
+            {
+              "id": "user_prompt",
+              "name": "user_prompt",
+              "value": "={{ 'Create a WOW MOMENT script for:\\n\\nINDUSTRY: ' + $json.industry + '\\nHOOK TYPE: ' + $json.hook_type + '\\nHOOK PHRASE: ' + $json.hook_phrase + '\\nDURATION: ' + $json.duration + 's\\nFORMAT: Reel 9:16 (1080x1920)\\n\\nTarget: Instagram Reels + TikTok\\nGoal: Stop the scroll in under 2 seconds. Pure visual impact. No words, just sensation.\\n\\nGenerate the JSON script now.' }}",
+              "type": "string"
+            },
+            {
+              "id": "calendar_date",
+              "name": "calendar_date",
+              "value": "={{ $json.date }}",
+              "type": "string"
+            },
+            {
+              "id": "hook_type",
+              "name": "hook_type",
+              "value": "={{ $json.hook_type }}",
+              "type": "string"
+            },
+            {
+              "id": "industry",
+              "name": "industry",
+              "value": "={{ $json.industry }}",
+              "type": "string"
+            },
+            {
+              "id": "hook_phrase",
+              "name": "hook_phrase",
+              "value": "={{ $json.hook_phrase }}",
+              "type": "string"
+            },
+            {
+              "id": "duration",
+              "name": "duration",
+              "value": "={{ $json.duration }}",
+              "type": "number"
+            },
+            {
+              "id": "row_number",
+              "name": "row_number",
+              "value": "={{ $json.row_number }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "build-wow-prompt",
+      "name": "Build WOW Prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [1350, 250]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ {\n  \"model\": \"llama-3.3-70b-versatile\",\n  \"messages\": [\n    { \"role\": \"system\", \"content\": $json.system_prompt },\n    { \"role\": \"user\", \"content\": $json.user_prompt }\n  ],\n  \"temperature\": 0.8,\n  \"max_tokens\": 2000,\n  \"response_format\": { \"type\": \"json_object\" }\n} }}",
+        "options": {}
+      },
+      "id": "groq-wow-script",
+      "name": "Groq - Generate WOW Script",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1550, 250],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "groq-api",
+          "name": "Groq API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse and validate WOW 4-phase structure\nconst response = $input.item.json;\nconst content = response.choices[0].message.content;\nlet parsed;\n\ntry {\n  // Handle potential markdown wrapping\n  const jsonStr = content.replace(/```json\\n?|```\\n?/g, '').trim();\n  parsed = JSON.parse(jsonStr);\n} catch (e) {\n  throw new Error('Failed to parse WOW script JSON: ' + e.message);\n}\n\n// Validate 4-phase structure\nif (!parsed.phases || parsed.phases.length !== 4) {\n  throw new Error('WOW script must have exactly 4 phases, got ' + (parsed.phases ? parsed.phases.length : 0));\n}\n\nconst expectedPhases = ['TRIGGER', 'IMMERSION', 'REVEAL', 'CTA'];\nparsed.phases.forEach((phase, i) => {\n  if (phase.phase !== expectedPhases[i]) {\n    throw new Error(`Phase ${i} should be ${expectedPhases[i]}, got ${phase.phase}`);\n  }\n  if (!phase.image_prompt || phase.image_prompt.length < 20) {\n    throw new Error(`Phase ${i} (${phase.phase}) has insufficient image_prompt`);\n  }\n  if (!phase.duration || phase.duration <= 0) {\n    throw new Error(`Phase ${i} (${phase.phase}) has invalid duration`);\n  }\n});\n\n// Validate total duration\nconst totalDuration = parsed.phases.reduce((sum, p) => sum + p.duration, 0);\nif (totalDuration !== 12) {\n  // Auto-fix: normalize to 12s\n  const scale = 12 / totalDuration;\n  parsed.phases[0].duration = 2;\n  parsed.phases[1].duration = 4;\n  parsed.phases[2].duration = 2;\n  parsed.phases[3].duration = 4;\n}\n\n// Extract CTA text\nconst ctaPhase = parsed.phases[3];\nconst ctaText = ctaPhase.cta_text || 'Fatto con VIVID. In 30 secondi.';\nconst ctaSecondary = ctaPhase.cta_secondary || 'Link in bio \\u2192 Provalo gratis';\n\n// Pass through calendar metadata from previous node\nconst prev = $('Build WOW Prompt').first().json;\n\nreturn [{\n  json: {\n    phases: parsed.phases,\n    hook_type: parsed.hook_type || prev.hook_type,\n    industry: parsed.industry || prev.industry,\n    music_mood: parsed.music_mood || 'cinematic_asmr',\n    hashtags: parsed.hashtags || ['#VIVID', '#VideoMarketing', '#AIVideo'],\n    cta_text: ctaText,\n    cta_secondary: ctaSecondary,\n    calendar_date: prev.calendar_date,\n    hook_phrase: prev.hook_phrase,\n    duration: prev.duration,\n    row_number: prev.row_number\n  }\n}];"
+      },
+      "id": "parse-wow-phases",
+      "name": "Parse WOW Phases",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1750, 250]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO content_queue (\n  pillar, content_source, calendar_date, hook_type, industry,\n  hook_phrase, phases_json, cta_overlay_text, cta_secondary_text,\n  music_mood, estimated_duration, status, technique_name,\n  technique_category, google_sheet_row, trending_keywords\n) VALUES (\n  'wow',\n  'calendar',\n  '{{ $json.calendar_date }}',\n  '{{ $json.hook_type }}',\n  '{{ $json.industry.replace(/'/g, \"''\") }}',\n  '{{ $json.hook_phrase.replace(/'/g, \"''\") }}',\n  '{{ JSON.stringify($json.phases).replace(/'/g, \"''\") }}'::jsonb,\n  '{{ $json.cta_text.replace(/'/g, \"''\") }}',\n  '{{ $json.cta_secondary.replace(/'/g, \"''\") }}',\n  '{{ $json.music_mood }}',\n  12,\n  'script_pending_approval',\n  '{{ ('WOW: ' + $json.hook_type + ' - ' + $json.industry).replace(/'/g, \"''\") }}',\n  'wow_moment',\n  {{ $json.row_number }},\n  ARRAY[{{ $json.hashtags.map(h => \"'\" + h.replace('#', '') + \"'\").join(',') }}]\n) RETURNING id;",
+        "options": {}
+      },
+      "id": "insert-wow-queue",
+      "name": "Insert WOW into Content Queue",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1950, 250],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-n8n",
+          "name": "PostgreSQL - n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "mode": "id",
+          "value": "={{ $env.GOOGLE_SHEET_CALENDAR_ID }}"
+        },
+        "sheetName": {
+          "mode": "name",
+          "value": "Calendario"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "script_pending_approval",
+            "content_id": "={{ $json.id }}"
+          }
+        },
+        "options": {
+          "cellFormat": "USER_ENTERED"
+        }
+      },
+      "id": "update-sheet-wow",
+      "name": "Update Sheet - WOW Generated",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [2150, 250],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-oauth",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "content_id",
+              "name": "content_id",
+              "value": "={{ $('Insert WOW into Content Queue').item.json.id }}",
+              "type": "number"
+            },
+            {
+              "id": "hook_type",
+              "name": "hook_type",
+              "value": "={{ $('Parse WOW Phases').item.json.hook_type }}",
+              "type": "string"
+            },
+            {
+              "id": "industry",
+              "name": "industry",
+              "value": "={{ $('Parse WOW Phases').item.json.industry }}",
+              "type": "string"
+            },
+            {
+              "id": "hook_phrase",
+              "name": "hook_phrase",
+              "value": "={{ $('Parse WOW Phases').item.json.hook_phrase }}",
+              "type": "string"
+            },
+            {
+              "id": "phases",
+              "name": "phases",
+              "value": "={{ $('Parse WOW Phases').item.json.phases }}",
+              "type": "object"
+            },
+            {
+              "id": "calendar_date",
+              "name": "calendar_date",
+              "value": "={{ $('Parse WOW Phases').item.json.calendar_date }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-wow-telegram",
+      "name": "Prepare WOW Telegram Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [2350, 250]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ {\n  \"chat_id\": $env.TELEGRAM_CHAT_ID,\n  \"text\": \"\\ud83c\\udfac WOW MOMENT - Script Generated\\n\\n\\ud83d\\udcc5 Date: \" + $json.calendar_date + \"\\n\\ud83c\\udff7\\ufe0f Hook: \" + $json.hook_type + \" (\" + $json.industry + \")\\n\\ud83c\\udfaf Phrase: \" + $json.hook_phrase + \"\\n\\n\\u2500\\u2500 4 PHASES \\u2500\\u2500\\n1\\ufe0f\\u20e3 TRIGGER (0-2s): \" + $json.phases[0].image_prompt.substring(0, 100) + \"...\\n2\\ufe0f\\u20e3 IMMERSION (2-6s): \" + $json.phases[1].image_prompt.substring(0, 100) + \"...\\n3\\ufe0f\\u20e3 REVEAL (6-8s): \" + $json.phases[2].image_prompt.substring(0, 100) + \"...\\n4\\ufe0f\\u20e3 CTA (8-12s): \" + ($json.phases[3].cta_text || 'Fatto con VIVID.') + \"\\n\\n\\ud83c\\udfb5 Audio: ASMR + Music (no voiceover)\\n\\ud83c\\udfa5 Duration: 12s\\nContent ID: \" + $json.content_id,\n  \"parse_mode\": \"HTML\",\n  \"reply_markup\": {\n    \"inline_keyboard\": [[\n      { \"text\": \"\\u2705 Approve\", \"callback_data\": \"approve_script_\" + $json.content_id },\n      { \"text\": \"\\u274c Reject\", \"callback_data\": \"reject_script_\" + $json.content_id }\n    ]]\n  }\n} }}",
+        "options": {}
+      },
+      "id": "send-wow-telegram",
+      "name": "Send WOW Telegram Approval",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2550, 250]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO content_queue (\n  pillar, content_source, calendar_date, hook_type,\n  hook_phrase, technique_name, technique_category,\n  status, manual_upload, google_sheet_row,\n  estimated_duration\n) VALUES (\n  '{{ $json.pillar.toLowerCase() }}',\n  'calendar',\n  '{{ $json.date }}',\n  '{{ $json.hook_type || '' }}',\n  '{{ ($json.hook_phrase || '').replace(/'/g, \"''\") }}',\n  '{{ ($json.pillar + ': ' + ($json.hook_phrase || '').substring(0, 50)).replace(/'/g, \"''\") }}',\n  '{{ $json.pillar.toLowerCase() }}',\n  'awaiting_manual_upload',\n  TRUE,\n  {{ $json.row_number }},\n  {{ $json.duration || 45 }}\n) RETURNING id;",
+        "options": {}
+      },
+      "id": "insert-placeholder",
+      "name": "Insert EDUCA/VIAGGIO Placeholder",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1350, 550],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-n8n",
+          "name": "PostgreSQL - n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "mode": "id",
+          "value": "={{ $env.GOOGLE_SHEET_CALENDAR_ID }}"
+        },
+        "sheetName": {
+          "mode": "name",
+          "value": "Calendario"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "awaiting_manual_upload",
+            "content_id": "={{ $json.id }}"
+          }
+        },
+        "options": {
+          "cellFormat": "USER_ENTERED"
+        }
+      },
+      "id": "update-sheet-placeholder",
+      "name": "Update Sheet - Placeholder",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1550, 550],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-oauth",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ {\n  \"chat_id\": $env.TELEGRAM_CHAT_ID,\n  \"text\": \"\\ud83d\\udccb MANUAL UPLOAD NEEDED\\n\\n\\ud83d\\udcc5 Date: \" + $('Filter Today\\'s Pending Items').item.json.date + \"\\n\\ud83d\\udccc Pillar: \" + $('Filter Today\\'s Pending Items').item.json.pillar + \"\\n\\ud83c\\udfaf Topic: \" + ($('Filter Today\\'s Pending Items').item.json.hook_phrase || 'N/A') + \"\\n\\u23f1\\ufe0f Duration: \" + ($('Filter Today\\'s Pending Items').item.json.duration || 45) + \"s\\n\\n\\u23f3 Upload your video and mark as ready.\\nContent ID: \" + $json.id\n} }}",
+        "options": {}
+      },
+      "id": "send-placeholder-telegram",
+      "name": "Send EDUCA/VIAGGIO Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1750, 550]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ {\n  \"chat_id\": $env.TELEGRAM_CHAT_ID,\n  \"text\": \"\\ud83d\\udcc5 No pending calendar items for today (\" + new Date().toISOString().split('T')[0] + \").\\nCheck the editorial calendar sheet.\"\n} }}",
+        "options": {}
+      },
+      "id": "no-items-notification",
+      "name": "No Items Today Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1100, 650]
+    }
+  ],
+  "connections": {
+    "Daily at 8 AM": {
+      "main": [
+        [
+          {
+            "node": "Read Calendar Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read Calendar Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Calendar Sheet": {
+      "main": [
+        [
+          {
+            "node": "Filter Today's Pending Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Today's Pending Items": {
+      "main": [
+        [
+          {
+            "node": "Has Pending Items?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Pending Items?": {
+      "main": [
+        [
+          {
+            "node": "No Items Today Notification",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Switch by Pillar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch by Pillar": {
+      "main": [
+        [
+          {
+            "node": "Build WOW Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert EDUCA/VIAGGIO Placeholder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert EDUCA/VIAGGIO Placeholder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build WOW Prompt": {
+      "main": [
+        [
+          {
+            "node": "Groq - Generate WOW Script",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq - Generate WOW Script": {
+      "main": [
+        [
+          {
+            "node": "Parse WOW Phases",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse WOW Phases": {
+      "main": [
+        [
+          {
+            "node": "Insert WOW into Content Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert WOW into Content Queue": {
+      "main": [
+        [
+          {
+            "node": "Update Sheet - WOW Generated",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Sheet - WOW Generated": {
+      "main": [
+        [
+          {
+            "node": "Prepare WOW Telegram Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare WOW Telegram Data": {
+      "main": [
+        [
+          {
+            "node": "Send WOW Telegram Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert EDUCA/VIAGGIO Placeholder": {
+      "main": [
+        [
+          {
+            "node": "Update Sheet - Placeholder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Sheet - Placeholder": {
+      "main": [
+        [
+          {
+            "node": "Send EDUCA/VIAGGIO Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 2,
+  "updatedAt": "2026-02-11T12:00:00.000Z",
+  "versionId": "1"
+}

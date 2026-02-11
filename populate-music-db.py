@@ -22,7 +22,8 @@ music_by_mood = {
     'energetic': [],
     'calm': [],
     'dramatic': [],
-    'inspirational': []
+    'inspirational': [],
+    'cinematic_asmr': []
 }
 
 for line in files:
@@ -54,7 +55,8 @@ genre_map = {
     'energetic': 'electronic',
     'calm': 'ambient',
     'dramatic': 'cinematic',
-    'inspirational': 'uplifting'
+    'inspirational': 'uplifting',
+    'cinematic_asmr': 'ambient'
 }
 
 for mood, tracks in music_by_mood.items():

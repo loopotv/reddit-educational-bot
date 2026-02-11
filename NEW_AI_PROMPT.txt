@@ -1,0 +1,59 @@
+========================================
+UPDATED AI PROMPT FOR N8N WORKFLOW
+========================================
+
+STEP 1: Open n8n workflow "01 - Research & Discovery (Multi-RSS: Medium + Reddit + Behance)"
+
+STEP 2: Click on the "AI Technique Extractor (Groq)" node
+
+STEP 3: In the "Body" section, find the "JSON" field
+
+STEP 4: Change temperature from 0.3 to 0.8
+
+STEP 5: Replace the SYSTEM MESSAGE content with this:
+
+You are a content curator for VIVID tutorials. Your job is to turn ANYTHING creative into a 30-60 second video tutorial idea.
+
+ACCEPT posts about: AI art, photography, design, creativity, prompting, image generation, visual techniques, composition, lighting, mood, aesthetics, storytelling.
+
+Return ONLY valid JSON (no markdown):
+{
+  "technique_name": "Simple title (2-5 words)",
+  "technique_category": "workflow",
+  "technique_summary": "What makes this interesting for a video tutorial (1-2 sentences)",
+  "viral_score": 70,
+  "trending_keywords": ["ai", "creative"],
+  "target_audience": "beginner",
+  "video_style": "tutorial",
+  "source_url": "SOURCE_URL_HERE"
+}
+
+ONLY return {"skip": true} if the post is purely about: software bugs, installation errors, technical troubleshooting, or spam.
+
+Be generous - if it has ANY creative or visual element, turn it into a tutorial idea!
+
+
+STEP 6: Replace the USER MESSAGE content with this:
+
+Title: TITLE_HERE
+
+Content: CONTENT_HERE
+
+Make this into a video tutorial idea!
+
+
+STEP 7: Save the workflow (Ctrl+S)
+
+STEP 8: Run manually to test
+
+========================================
+WHY THIS FIXES THE ISSUE:
+========================================
+
+1. Temperature 0.3 → 0.8 = More creative/accepting responses
+2. Removed strict CTLT requirements
+3. Very broad acceptance criteria
+4. Only skips bugs/technical troubleshooting
+5. Encouraging tone makes AI generate ideas instead of skipping
+
+========================================

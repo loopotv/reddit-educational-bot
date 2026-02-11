@@ -1,5 +1,5 @@
 {
-  "name": "03 - Telegram Approval Handler",
+  "name": "02 - Telegram Approval Handler",
   "nodes": [
     {
       "parameters": {
@@ -146,7 +146,7 @@
         "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/editMessageText",
         "sendBody": true,
         "contentType": "json",
-        "body": "={{ {\n  \"chat_id\": $('Extract Callback Data').item.json.chat_id,\n  \"message_id\": $('Extract Callback Data').item.json.message_id,\n  \"text\": $('Approve Script in DB').item.json.script_full.substring(0,300) + \"\\n\\n✅ APPROVED - Added to render queue\",\n  \"reply_markup\": { \"inline_keyboard\": [] }\n} }}",
+        "body": "={{ {\n  \"chat_id\": $('Extract Callback Data').item.json.chat_id,\n  \"message_id\": $('Extract Callback Data').item.json.message_id,\n  \"text\": $('Approve Script in DB').item.json.pillar === 'wow'\n    ? '\\u2705 WOW MOMENT APPROVED\\n\\n\\ud83c\\udfac ' + ($('Approve Script in DB').item.json.hook_phrase || '') + '\\n\\ud83c\\udff7\\ufe0f ' + ($('Approve Script in DB').item.json.hook_type || '') + ' / ' + ($('Approve Script in DB').item.json.industry || '') + '\\n\\n\\u25b6\\ufe0f Moving to WOW render queue (12s, no voiceover)'\n    : ($('Approve Script in DB').item.json.script_full || '').substring(0, 300) + '\\n\\n\\u2705 APPROVED - Added to render queue',\n  \"reply_markup\": { \"inline_keyboard\": [] }\n} }}",
         "options": {}
       },
       "id": "update-message-approve",
@@ -254,7 +254,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "=UPDATE content_queue\nSET video_approved = TRUE,\n    status = 'ready_to_publish',\n    video_approved_at = NOW()\nWHERE id = {{ $json.content_id }}\nRETURNING *;",
+        "query": "=UPDATE content_queue\nSET video_approved = TRUE,\n    status = 'video_approved',\n    video_approved_at = NOW()\nWHERE id = {{ $json.content_id }}\nRETURNING *;",
         "options": {}
       },
       "id": "approve-video-db",
@@ -365,7 +365,47 @@
       "name": "Respond to Webhook",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [1650, 300]
+      "position": [1850, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Update Google Sheets if this is a calendar item\nconst row = $input.first().json;\nif (row.content_source === 'calendar' && row.google_sheet_row) {\n  return [{ json: { should_update: true, row_number: row.google_sheet_row, status: row.status, pillar: row.pillar } }];\n}\nreturn [{ json: { should_update: false } }];"
+      },
+      "id": "check-calendar-source-approve",
+      "name": "Check Calendar Source (Approve)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 50]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Update Google Sheets if this is a calendar item\nconst row = $input.first().json;\nif (row.content_source === 'calendar' && row.google_sheet_row) {\n  return [{ json: { should_update: true, row_number: row.google_sheet_row, status: row.status, pillar: row.pillar } }];\n}\nreturn [{ json: { should_update: false } }];"
+      },
+      "id": "check-calendar-source-reject",
+      "name": "Check Calendar Source (Reject)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Update Google Sheets if this is a calendar item (video approval)\nconst row = $input.first().json;\nif (row.content_source === 'calendar' && row.google_sheet_row) {\n  return [{ json: { should_update: true, row_number: row.google_sheet_row, status: row.status, pillar: row.pillar } }];\n}\nreturn [{ json: { should_update: false } }];"
+      },
+      "id": "check-calendar-source-video-approve",
+      "name": "Check Calendar Source (Video Approve)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Update Google Sheets if this is a calendar item (video rejection)\nconst row = $input.first().json;\nif (row.content_source === 'calendar' && row.google_sheet_row) {\n  return [{ json: { should_update: true, row_number: row.google_sheet_row, status: row.status, pillar: row.pillar } }];\n}\nreturn [{ json: { should_update: false } }];"
+      },
+      "id": "check-calendar-source-video-reject",
+      "name": "Check Calendar Source (Video Reject)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 600]
     }
   ],
   "connections": {
@@ -430,6 +470,11 @@
             "node": "Answer Callback - Approve",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Check Calendar Source (Approve)",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -461,6 +506,11 @@
         [
           {
             "node": "Answer Callback - Reject",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Check Calendar Source (Reject)",
             "type": "main",
             "index": 0
           }
@@ -523,6 +573,11 @@
             "node": "Answer Callback - Video Approve",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Check Calendar Source (Video Approve)",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -554,6 +609,11 @@
         [
           {
             "node": "Answer Callback - Video Reject",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Check Calendar Source (Video Reject)",
             "type": "main",
             "index": 0
           }
@@ -590,6 +650,6 @@
   "staticData": null,
   "tags": [],
   "triggerCount": 1,
-  "updatedAt": "2024-01-15T12:00:00.000Z",
-  "versionId": "1"
+  "updatedAt": "2026-02-11T12:00:00.000Z",
+  "versionId": "2"
 }

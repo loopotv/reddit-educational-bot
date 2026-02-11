@@ -1,0 +1,512 @@
+{
+  "name": "04 - Instagram Publisher (Auto-post Approved Videos)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "schedule-check",
+      "name": "Check Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM content_queue\nWHERE status = 'video_approved'\nAND video_url IS NOT NULL\nORDER BY created_at ASC\nLIMIT 1;",
+        "options": {}
+      },
+      "id": "get-approved-video",
+      "name": "Get Approved Video",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [450, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-n8n",
+          "name": "PostgreSQL - n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.id }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "has-video",
+      "name": "Has Video to Publish?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE content_queue\nSET status = 'publishing_to_instagram'\nWHERE id = {{ $json.id }};",
+        "options": {}
+      },
+      "id": "mark-publishing",
+      "name": "Mark as Publishing",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [850, 200],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-n8n",
+          "name": "PostgreSQL - n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "content_id",
+              "name": "content_id",
+              "value": "={{ $('Get Approved Video').item.json.id }}",
+              "type": "number"
+            },
+            {
+              "id": "video_url",
+              "name": "video_url",
+              "value": "={{ $('Get Approved Video').item.json.video_url }}",
+              "type": "string"
+            },
+            {
+              "id": "caption",
+              "name": "caption",
+              "value": "={{ $('Get Approved Video').item.json.pillar === 'wow' ? ($('Get Approved Video').item.json.hook_phrase || '') + '\\n\\n' + ($('Get Approved Video').item.json.cta_overlay_text || 'Fatto con VIVID.') + '\\n\\n#VIVID #VideoMarketing #AIVideo #ContentCreation #MadeWithVIVID #Ristorazione #FoodContent #HotelMarketing' : ($('Get Approved Video').item.json.script_hook || $('Get Approved Video').item.json.technique_name) + '\\n\\n#AIart #AIimagegeneration #promptengineering #CTLT #photography #tutorial #vivid' }}",
+              "type": "string"
+            },
+            {
+              "id": "pillar",
+              "name": "pillar",
+              "value": "={{ $('Get Approved Video').item.json.pillar || 'tutorial' }}",
+              "type": "string"
+            },
+            {
+              "id": "google_sheet_row",
+              "name": "google_sheet_row",
+              "value": "={{ $('Get Approved Video').item.json.google_sheet_row }}",
+              "type": "number"
+            },
+            {
+              "id": "content_source",
+              "name": "content_source",
+              "value": "={{ $('Get Approved Video').item.json.content_source || 'discovery' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-post-data",
+      "name": "Prepare Post Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [1050, 200]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "=https://graph.instagram.com/v24.0/{{ $env.INSTAGRAM_ACCOUNT_ID }}/media",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "media_type",
+              "value": "REELS"
+            },
+            {
+              "name": "video_url",
+              "value": "={{ $json.video_url }}"
+            },
+            {
+              "name": "caption",
+              "value": "={{ $json.caption }}"
+            },
+            {
+              "name": "access_token",
+              "value": "={{ $env.INSTAGRAM_ACCESS_TOKEN }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "create-media-container",
+      "name": "Create Instagram Media Container",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1250, 200]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "creation_id",
+              "name": "creation_id",
+              "value": "={{ $json.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-creation-id",
+      "name": "Extract Creation ID",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [1450, 200]
+    },
+    {
+      "parameters": {
+        "amount": 10,
+        "unit": "seconds"
+      },
+      "id": "wait-processing",
+      "name": "Wait for Video Processing",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1650, 200],
+      "webhookId": "instagram-wait"
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "url": "=https://graph.instagram.com/v24.0/{{ $('Extract Creation ID').item.json.creation_id }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "status_code"
+            },
+            {
+              "name": "access_token",
+              "value": "={{ $env.INSTAGRAM_ACCESS_TOKEN }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "check-status",
+      "name": "Check Processing Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1850, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status_code }}",
+              "operation": "equals",
+              "value2": "FINISHED"
+            }
+          ]
+        }
+      },
+      "id": "is-ready",
+      "name": "Is Ready to Publish?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2050, 200]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "=https://graph.instagram.com/v24.0/{{ $env.INSTAGRAM_ACCOUNT_ID }}/media_publish",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "creation_id",
+              "value": "={{ $('Extract Creation ID').item.json.creation_id }}"
+            },
+            {
+              "name": "access_token",
+              "value": "={{ $env.INSTAGRAM_ACCESS_TOKEN }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "publish-to-instagram",
+      "name": "Publish to Instagram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2250, 100]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "instagram_post_id",
+              "name": "instagram_post_id",
+              "value": "={{ $json.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-post-id",
+      "name": "Extract Post ID",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [2450, 100]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE content_queue\nSET status = 'published',\n    instagram_post_id = '{{ $json.instagram_post_id }}',\n    published_at = NOW()\nWHERE id = {{ $('Prepare Post Data').first().json.content_id }}\nRETURNING *;",
+        "options": {}
+      },
+      "id": "mark-published",
+      "name": "Mark as Published",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [2650, 100],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-n8n",
+          "name": "PostgreSQL - n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ {\n  chat_id: $env.TELEGRAM_CHAT_ID,\n  text: ($('Prepare Post Data').first().json.pillar === 'wow' ? '\\ud83c\\udfac' : '\\u2705') + ' VIDEO PUBLISHED TO INSTAGRAM!\\n\\n\\ud83d\\udcf1 Post ID: ' + $json.instagram_post_id + '\\n\\ud83c\\udfac Content ID: ' + $('Prepare Post Data').first().json.content_id + '\\n\\ud83c\\udff7\\ufe0f Pillar: ' + ($('Prepare Post Data').first().json.pillar || 'tutorial').toUpperCase() + '\\n\\nView on Instagram: https://www.instagram.com/p/' + $json.instagram_post_id,\n  parse_mode: 'HTML'\n} }}",
+        "options": {}
+      },
+      "id": "notify-success",
+      "name": "Notify Success via Telegram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2850, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Update Google Sheets if this is a calendar item\nconst data = $('Prepare Post Data').first().json;\nif (data.content_source === 'calendar' && data.google_sheet_row) {\n  return [{ json: { should_update: true, row_number: data.google_sheet_row, instagram_post_id: $('Extract Post ID').first().json.instagram_post_id } }];\n}\nreturn [{ json: { should_update: false } }];"
+      },
+      "id": "check-calendar-published",
+      "name": "Check Calendar Source (Published)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2850, 200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE content_queue\nSET status = 'publish_failed',\n    error_message = 'Video processing not finished in time'\nWHERE id = {{ $('Prepare Post Data').first().json.content_id }};",
+        "options": {}
+      },
+      "id": "mark-failed",
+      "name": "Mark as Failed",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [2250, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-n8n",
+          "name": "PostgreSQL - n8n"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Check Every 15 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Get Approved Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Approved Video": {
+      "main": [
+        [
+          {
+            "node": "Has Video to Publish?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Video to Publish?": {
+      "main": [
+        [
+          {
+            "node": "Mark as Publishing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark as Publishing": {
+      "main": [
+        [
+          {
+            "node": "Prepare Post Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Post Data": {
+      "main": [
+        [
+          {
+            "node": "Create Instagram Media Container",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Instagram Media Container": {
+      "main": [
+        [
+          {
+            "node": "Extract Creation ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Creation ID": {
+      "main": [
+        [
+          {
+            "node": "Wait for Video Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Video Processing": {
+      "main": [
+        [
+          {
+            "node": "Check Processing Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Processing Status": {
+      "main": [
+        [
+          {
+            "node": "Is Ready to Publish?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Ready to Publish?": {
+      "main": [
+        [
+          {
+            "node": "Publish to Instagram",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark as Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish to Instagram": {
+      "main": [
+        [
+          {
+            "node": "Extract Post ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Post ID": {
+      "main": [
+        [
+          {
+            "node": "Mark as Published",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark as Published": {
+      "main": [
+        [
+          {
+            "node": "Notify Success via Telegram",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Check Calendar Source (Published)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2026-02-11T12:00:00.000Z",
+  "versionId": "2"
+}
