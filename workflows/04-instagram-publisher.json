@@ -296,8 +296,23 @@
         "method": "POST",
         "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
         "sendBody": true,
-        "contentType": "json",
-        "body": "={{ {\n  chat_id: $env.TELEGRAM_CHAT_ID,\n  text: ($('Prepare Post Data').first().json.pillar === 'wow' ? '\\ud83c\\udfac' : '\\u2705') + ' VIDEO PUBLISHED TO INSTAGRAM!\\n\\n\\ud83d\\udcf1 Post ID: ' + $json.instagram_post_id + '\\n\\ud83c\\udfac Content ID: ' + $('Prepare Post Data').first().json.content_id + '\\n\\ud83c\\udff7\\ufe0f Pillar: ' + ($('Prepare Post Data').first().json.pillar || 'tutorial').toUpperCase() + '\\n\\nView on Instagram: https://www.instagram.com/p/' + $json.instagram_post_id,\n  parse_mode: 'HTML'\n} }}",
+        "contentType": "form-url-encoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "chat_id",
+              "value": "={{ $env.TELEGRAM_CHAT_ID }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ ($('Prepare Post Data').first().json.pillar === 'wow' ? '\ud83c\udfac' : '\u2705') + ' VIDEO PUBLISHED TO INSTAGRAM!\\n\\n\ud83d\udcf1 Post ID: ' + $json.instagram_post_id + '\\n\ud83c\udfac Content ID: ' + $('Prepare Post Data').first().json.content_id + '\\n\ud83c\udff7\ufe0f Pillar: ' + ($('Prepare Post Data').first().json.pillar || 'tutorial').toUpperCase() + '\\n\\nView on Instagram: https://www.instagram.com/p/' + $json.instagram_post_id }}"
+            },
+            {
+              "name": "parse_mode",
+              "value": "HTML"
+            }
+          ]
+        },
         "options": {}
       },
       "id": "notify-success",
