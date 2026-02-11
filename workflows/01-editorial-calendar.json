@@ -351,27 +351,8 @@
         "method": "POST",
         "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
         "sendBody": true,
-        "contentType": "multipart-form-data",
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "chat_id",
-              "value": "={{ $env.TELEGRAM_CHAT_ID }}"
-            },
-            {
-              "name": "text",
-              "value": "={{ '\\ud83c\\udfac WOW MOMENT - Script Generated\\n\\n\\ud83d\\udcc5 Date: ' + $json.calendar_date + '\\n\\ud83c\\udff7\\ufe0f Hook: ' + $json.hook_type + ' (' + $json.industry + ')\\n\\ud83c\\udfaf Phrase: ' + $json.hook_phrase + '\\n\\n\\u2500\\u2500 4 PHASES \\u2500\\u2500\\n1\\ufe0f\\u20e3 TRIGGER (0-2s): ' + $json.phases[0].image_prompt.substring(0, 100) + '...\\n2\\ufe0f\\u20e3 IMMERSION (2-6s): ' + $json.phases[1].image_prompt.substring(0, 100) + '...\\n3\\ufe0f\\u20e3 REVEAL (6-8s): ' + $json.phases[2].image_prompt.substring(0, 100) + '...\\n4\\ufe0f\\u20e3 CTA (8-12s): ' + ($json.phases[3].cta_text || 'Fatto con VIVID.') + '\\n\\n\\ud83c\\udfb5 Audio: ASMR + Music (no voiceover)\\n\\ud83c\\udfa5 Duration: 12s\\nContent ID: ' + $json.content_id }}"
-            },
-            {
-              "name": "parse_mode",
-              "value": "HTML"
-            },
-            {
-              "name": "reply_markup",
-              "value": "={{ JSON.stringify({ inline_keyboard: [[ { text: '\u2705 Approve', callback_data: 'approve_script_' + $json.content_id }, { text: '\u274c Reject', callback_data: 'reject_script_' + $json.content_id } ]] }) }}"
-            }
-          ]
-        },
+        "contentType": "json",
+        "body": "={{ JSON.stringify({ chat_id: $env.TELEGRAM_CHAT_ID, text: '\\ud83c\\udfac WOW MOMENT - Script Generated\\n\\n\\ud83d\\udcc5 Date: ' + $json.calendar_date + '\\n\\ud83c\\udff7\\ufe0f Hook: ' + $json.hook_type + ' (' + $json.industry + ')\\n\\ud83c\\udfaf Phrase: ' + $json.hook_phrase + '\\n\\n\\u2500\\u2500 4 PHASES \\u2500\\u2500\\n1\\ufe0f\\u20e3 TRIGGER (0-2s): ' + $json.phases[0].image_prompt.substring(0, 100) + '...\\n2\\ufe0f\\u20e3 IMMERSION (2-6s): ' + $json.phases[1].image_prompt.substring(0, 100) + '...\\n3\\ufe0f\\u20e3 REVEAL (6-8s): ' + $json.phases[2].image_prompt.substring(0, 100) + '...\\n4\\ufe0f\\u20e3 CTA (8-12s): ' + ($json.phases[3].cta_text || 'Fatto con VIVID.') + '\\n\\n\\ud83c\\udfb5 Audio: ASMR + Music (no voiceover)\\n\\ud83c\\udfa5 Duration: 12s\\nContent ID: ' + $json.content_id, parse_mode: 'HTML', reply_markup: { inline_keyboard: [[ { text: '\\u2705 Approve', callback_data: 'approve_script_' + $json.content_id }, { text: '\\u274c Reject', callback_data: 'reject_script_' + $json.content_id } ]] } }) }}",
         "options": {}
       },
       "id": "send-wow-telegram",
@@ -437,19 +418,8 @@
         "method": "POST",
         "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
         "sendBody": true,
-        "contentType": "multipart-form-data",
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "chat_id",
-              "value": "={{ $env.TELEGRAM_CHAT_ID }}"
-            },
-            {
-              "name": "text",
-              "value": "={{ '\\ud83d\\udccb MANUAL UPLOAD NEEDED\\n\\n\\ud83d\\udcc5 Date: ' + $('Filter Today\\'s Pending Items').item.json.date + '\\n\\ud83d\\udccc Pillar: ' + $('Filter Today\\'s Pending Items').item.json.pillar + '\\n\\ud83c\\udfaf Topic: ' + ($('Filter Today\\'s Pending Items').item.json.hook_phrase || 'N/A') + '\\n\\u23f1\\ufe0f Duration: ' + ($('Filter Today\\'s Pending Items').item.json.duration || 45) + 's\\n\\n\\u23f3 Upload your video and mark as ready.\\nContent ID: ' + $json.id }}"
-            }
-          ]
-        },
+        "contentType": "json",
+        "body": "={{ JSON.stringify({ chat_id: $env.TELEGRAM_CHAT_ID, text: '\\ud83d\\udccb MANUAL UPLOAD NEEDED\\n\\n\\ud83d\\udcc5 Date: ' + $('Filter Today\\'s Pending Items').item.json.date + '\\n\\ud83d\\udccc Pillar: ' + $('Filter Today\\'s Pending Items').item.json.pillar + '\\n\\ud83c\\udfaf Topic: ' + ($('Filter Today\\'s Pending Items').item.json.hook_phrase || 'N/A') + '\\n\\u23f1\\ufe0f Duration: ' + ($('Filter Today\\'s Pending Items').item.json.duration || 45) + 's\\n\\n\\u23f3 Upload your video and mark as ready.\\nContent ID: ' + $json.id }) }}",
         "options": {}
       },
       "id": "send-placeholder-telegram",
@@ -463,19 +433,8 @@
         "method": "POST",
         "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
         "sendBody": true,
-        "contentType": "multipart-form-data",
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "chat_id",
-              "value": "={{ $env.TELEGRAM_CHAT_ID }}"
-            },
-            {
-              "name": "text",
-              "value": "={{ '\\ud83d\\udcc5 No pending calendar items for today (' + new Date().toISOString().split('T')[0] + ').\\nCheck the editorial calendar sheet.' }}"
-            }
-          ]
-        },
+        "contentType": "json",
+        "body": "={{ JSON.stringify({ chat_id: $env.TELEGRAM_CHAT_ID, text: '\\ud83d\\udcc5 No pending calendar items for today (' + new Date().toISOString().split('T')[0] + ').\\nCheck the editorial calendar sheet.' }) }}",
         "options": {}
       },
       "id": "no-items-notification",
