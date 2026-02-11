@@ -212,10 +212,17 @@
     },
     {
       "parameters": {
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
         "method": "POST",
         "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GROQ_API_KEY }}"
+            }
+          ]
+        },
         "sendBody": true,
         "contentType": "json",
         "body": "={{ {\n  \"model\": \"llama-3.3-70b-versatile\",\n  \"messages\": [\n    { \"role\": \"system\", \"content\": $json.system_prompt },\n    { \"role\": \"user\", \"content\": $json.user_prompt }\n  ],\n  \"temperature\": 0.8,\n  \"max_tokens\": 2000,\n  \"response_format\": { \"type\": \"json_object\" }\n} }}",
@@ -225,13 +232,7 @@
       "name": "Groq - Generate WOW Script",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [1550, 250],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "groq-api",
-          "name": "Groq API"
-        }
-      }
+      "position": [1550, 250]
     },
     {
       "parameters": {
