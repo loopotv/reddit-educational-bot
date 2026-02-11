@@ -123,8 +123,6 @@
     },
     {
       "parameters": {
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
         "method": "POST",
         "url": "=https://graph.instagram.com/v24.0/{{ $env.INSTAGRAM_ACCOUNT_ID }}/media",
         "sendQuery": true,
@@ -190,8 +188,6 @@
     },
     {
       "parameters": {
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
         "url": "=https://graph.instagram.com/v24.0/{{ $('Extract Creation ID').item.json.creation_id }}",
         "sendQuery": true,
         "queryParameters": {
@@ -234,8 +230,6 @@
     },
     {
       "parameters": {
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
         "method": "POST",
         "url": "=https://graph.instagram.com/v24.0/{{ $env.INSTAGRAM_ACCOUNT_ID }}/media_publish",
         "sendQuery": true,
@@ -299,8 +293,6 @@
     },
     {
       "parameters": {
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
         "method": "POST",
         "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
         "sendBody": true,
