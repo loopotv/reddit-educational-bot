@@ -131,10 +131,17 @@
     },
     {
       "parameters": {
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
         "method": "POST",
         "url": "https://api.wavespeed.ai/v1/audio/tts",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.WAVESPEED_API_KEY }}"
+            }
+          ]
+        },
         "sendBody": true,
         "contentType": "json",
         "body": "={{ {\n  \"text\": $json.script_full,\n  \"voice\": \"female-1\",\n  \"model\": \"minimax-speech-02-hd\",\n  \"speed\": 1.0,\n  \"format\": \"mp3\"\n} }}",
@@ -144,13 +151,7 @@
       "name": "Generate Voiceover (Wavespeed)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [1500, 400],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "wavespeed-api",
-          "name": "Wavespeed API"
-        }
-      }
+      "position": [1500, 400]
     },
     {
       "parameters": {
@@ -205,10 +206,17 @@
     },
     {
       "parameters": {
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
         "method": "POST",
         "url": "https://api.wavespeed.ai/v1/images/generate",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.WAVESPEED_API_KEY }}"
+            }
+          ]
+        },
         "sendBody": true,
         "contentType": "json",
         "body": "={{ {\n  \"prompt\": $json.image_prompt,\n  \"model\": \"flux-dev\",\n  \"width\": 1080,\n  \"height\": 1920,\n  \"num_outputs\": 1,\n  \"guidance_scale\": 3.5,\n  \"num_inference_steps\": 28\n} }}",
@@ -218,13 +226,7 @@
       "name": "Generate Image - Tutorial (Flux Dev)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [1700, 500],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "wavespeed-api",
-          "name": "Wavespeed API"
-        }
-      }
+      "position": [1700, 500]
     },
     {
       "parameters": {
@@ -296,10 +298,17 @@
     },
     {
       "parameters": {
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
         "method": "POST",
         "url": "https://api.wavespeed.ai/v1/images/generate",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.WAVESPEED_API_KEY }}"
+            }
+          ]
+        },
         "sendBody": true,
         "contentType": "json",
         "body": "={{ {\n  \"prompt\": $json.image_prompt,\n  \"model\": \"flux-dev\",\n  \"width\": 1080,\n  \"height\": 1920,\n  \"num_outputs\": 1,\n  \"guidance_scale\": 3.5,\n  \"num_inference_steps\": 28\n} }}",
@@ -309,13 +318,7 @@
       "name": "Generate Image - WOW (Flux Dev)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [1700, 50],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "wavespeed-api",
-          "name": "Wavespeed API"
-        }
-      }
+      "position": [1700, 50]
     },
     {
       "parameters": {
