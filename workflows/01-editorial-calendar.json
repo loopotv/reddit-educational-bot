@@ -59,7 +59,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Filter for today's pending items\nconst today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD\nconst items = $input.all();\n\nconst pending = items.filter(item => {\n  const row = item.json;\n  return row.date === today && row.status === 'pending';\n});\n\nif (pending.length === 0) {\n  // No items for today\n  return [{ json: { no_items: true, date: today, message: 'No pending calendar items for today' } }];\n}\n\n// Add row_number for Google Sheets writeback (1-indexed, +1 for header)\nreturn pending.map((item, idx) => ({\n  json: {\n    ...item.json,\n    row_number: items.indexOf(item) + 2, // +2 for header row + 0-index\n    no_items: false\n  }\n}));"
+        "jsCode": "// Filter for today's pending items\nconst today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD\nconst items = $input.all();\n\nconst pending = items.filter(item => {\n  const row = item.json;\n  // Case-insensitive status check, trim whitespace from date\n  const rowDate = (row.date || '').toString().trim();\n  const rowStatus = (row.status || '').toString().trim().toLowerCase();\n  return rowDate === today && rowStatus === 'pending';\n});\n\nif (pending.length === 0) {\n  // No items for today\n  return [{ json: { no_items: true, date: today, message: 'No pending calendar items for today' } }];\n}\n\n// Add row_number for Google Sheets writeback (1-indexed, +1 for header)\n// Normalize pillar to lowercase for consistent downstream matching\nreturn pending.map((item, idx) => ({\n  json: {\n    ...item.json,\n    pillar: (item.json.pillar || '').toString().trim().toLowerCase(),\n    row_number: items.indexOf(item) + 2, // +2 for header row + 0-index\n    no_items: false\n  }\n}));"
       },
       "id": "filter-today",
       "name": "Filter Today's Pending Items",
@@ -93,7 +93,7 @@
                 "conditions": [
                   {
                     "leftValue": "={{ $json.pillar }}",
-                    "rightValue": "WOW",
+                    "rightValue": "wow",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
@@ -109,7 +109,7 @@
                 "conditions": [
                   {
                     "leftValue": "={{ $json.pillar }}",
-                    "rightValue": "EDUCA",
+                    "rightValue": "educa",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
@@ -125,7 +125,7 @@
                 "conditions": [
                   {
                     "leftValue": "={{ $json.pillar }}",
-                    "rightValue": "VIAGGIO",
+                    "rightValue": "viaggio",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
