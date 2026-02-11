@@ -404,7 +404,7 @@
       },
       "id": "transfer-video",
       "name": "Transfer Video to Storage",
-      "type": "n8n-nodes-base.bash",
+      "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
       "position": [2900, 300]
     },
